@@ -1,12 +1,16 @@
 "use client";
-// Borrower app (roadmap §9) — sign in as one borrower (session-locked, can't
-// also be a lender/attester in the same browser — see lib/session.ts), then
-// KYC gate, then four screens. The chain is invisible: no block, hash,
-// timestamp, or HBAR anywhere. Everything is user actions + plain state.
+// Borrower app (roadmap §9) — sign in as one borrower, scoped to this browser
+// tab (see components/identity.ts). A lender tab open in another window keeps
+// working independently and simultaneously — tabs don't fight over identity
+// the way a shared cookie would. Then KYC gate, then four screens. The chain
+// is invisible: no block, hash, timestamp, or HBAR anywhere. Everything is
+// user actions + plain state. Polls every few seconds so an action taken in
+// another tab (a lender approving a loan, say) shows up here without a
+// manual refresh.
 import { useEffect, useState } from "react";
 import { api } from "@/components/api";
 import { RepNav } from "@/components/RepNav";
-import { WrongRole } from "@/components/WrongRole";
+import { getIdentity, setIdentity, clearIdentity, type Identity } from "@/components/identity";
 import { KycCapture } from "@/components/KycCapture";
 
 type Tab = "providers" | "documents" | "standing" | "requests";
@@ -20,7 +24,7 @@ const DOC_KINDS: { value: string; label: string }[] = [
 ];
 
 export default function BorrowerApp() {
-  const [session, setSession] = useState<any>(undefined); // undefined = loading
+  const [identity, setIdentityState] = useState<Identity | null | undefined>(undefined); // undefined = not yet checked
   const [borrowers, setBorrowers] = useState<any[]>([]);
   const [pickId, setPickId] = useState("");
   const [tab, setTab] = useState<Tab>("providers");
@@ -36,24 +40,23 @@ export default function BorrowerApp() {
   const [err, setErr] = useState("");
   const [active, setActive] = useState<any>(null);
 
-  async function loadSession() {
-    const r = await api("/api/rep/session");
-    if (r.session?.role === "borrower") {
-      const b = (await api("/api/rep/borrowers")).borrowers.find((x: any) => x.id === r.session.id);
+  async function loadIdentity() {
+    const i = getIdentity();
+    if (i?.role === "borrower") {
+      const b = (await api("/api/rep/borrowers")).borrowers.find((x: any) => x.id === i.id);
       if (!b) {
-        // Session points at a borrower that no longer exists (e.g. "Reset demo
-        // data" wiped the store but not the cookie) — stale session, not a
-        // valid one. Clear it so the sign-in/create flow shows again instead
-        // of leaving the page blank with no way to create a new account.
-        await fetch("/api/rep/session", { method: "DELETE" });
-        setSession(null);
+        // Points at a borrower that no longer exists (e.g. "Reset demo data"
+        // wiped the store) — stale, not valid. Clear it so the sign-in/create
+        // flow shows again instead of leaving the page blank.
+        clearIdentity();
+        setIdentityState(null);
         setActive(null);
         return;
       }
       setActive(b);
-      setSession(r.session);
+      setIdentityState(i);
     } else {
-      setSession(r.session);
+      setIdentityState(i);
     }
   }
   async function loadBorrowers() {
@@ -72,40 +75,46 @@ export default function BorrowerApp() {
     setRequests(rr.requests);
     setDocuments(d.documents);
   }
-  useEffect(() => { loadSession().catch((e) => setErr(e.message)); }, []);
-  useEffect(() => { if (!session) loadBorrowers().catch(() => {}); }, [session]);
-  useEffect(() => { if (session?.role === "borrower") loadAll(session.id).catch((e) => setErr(e.message)); }, [session]);
+  useEffect(() => { loadIdentity().catch((e) => setErr(e.message)); }, []);
+  useEffect(() => { if (!identity) loadBorrowers().catch(() => {}); }, [identity]);
+  useEffect(() => { if (identity?.role === "borrower") loadAll(identity.id).catch((e) => setErr(e.message)); }, [identity]);
+  // Live tracking: pick up changes made in other tabs (a lender requesting
+  // access, a document getting verified) without a manual refresh.
+  useEffect(() => {
+    if (identity?.role !== "borrower") return;
+    const t = setInterval(() => { loadIdentity().catch(() => {}); loadAll(identity.id).catch(() => {}); }, 4000);
+    return () => clearInterval(t);
+  }, [identity]);
 
   async function run(fn: () => Promise<any>) {
     setBusy(true); setErr("");
-    try { await fn(); await loadAll(session.id); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); await loadAll(identity!.id); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
   async function signInAs(id: string) {
-    setBusy(true); setErr("");
-    try {
-      await api("/api/rep/session", { role: "borrower", id });
-      await loadSession();
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    const b = borrowers.find((x) => x.id === id);
+    if (!b) return;
+    setIdentity({ role: "borrower", id, name: b.name });
+    await loadIdentity();
   }
   async function onboardAndSignIn() {
     setBusy(true); setErr("");
     try {
       const r = await api("/api/rep/borrowers", form);
-      await api("/api/rep/session", { role: "borrower", id: r.borrower.id });
+      setIdentity({ role: "borrower", id: r.borrower.id, name: r.borrower.name });
       setForm({ name: "", phone: "", personhoodId: "" });
-      await loadSession();
+      await loadIdentity();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
   async function requestConnect(provider: string) {
     setBusy(true); setErr("");
     try {
-      const r = await api(`/api/rep/borrowers/${session.id}/connections`, { provider });
+      const r = await api(`/api/rep/borrowers/${identity!.id}/connections`, { provider });
       setPendingConn({ id: r.connection.id, provider: r.connection.provider, scope: r.connection.scope });
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
   async function decideConn(approve: boolean) {
     if (!pendingConn) return;
-    await run(() => api(`/api/rep/borrowers/${session.id}/connections`, { decide: pendingConn.id, approve }));
+    await run(() => api(`/api/rep/borrowers/${identity!.id}/connections`, { decide: pendingConn.id, approve }));
     setPendingConn(null);
   }
   function onDocFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -120,7 +129,7 @@ export default function BorrowerApp() {
     if (!docFile) return;
     const [meta, base64] = docFile.split(",");
     const mime = meta.match(/data:(.*);base64/)?.[1] ?? "application/octet-stream";
-    await run(() => api(`/api/rep/borrowers/${session.id}/documents`, { kind: docForm.kind, label: docForm.label, fileBase64: base64, mime }));
+    await run(() => api(`/api/rep/borrowers/${identity!.id}/documents`, { kind: docForm.kind, label: docForm.label, fileBase64: base64, mime }));
     setDocFile(null); setDocForm({ kind: "ownership", label: "" });
   }
 
@@ -131,11 +140,9 @@ export default function BorrowerApp() {
       <RepNav />
       <div style={wrap}>
 
-      {session === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
+      {identity === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
 
-      {session && session.role !== "borrower" && <WrongRole session={session} wantRole="borrower" />}
-
-      {session === null && (
+      {identity !== undefined && identity?.role !== "borrower" && (
         <>
           <header style={{ marginBottom: 18 }}>
             <p style={eyebrow}>Borrower app</p>
@@ -167,7 +174,7 @@ export default function BorrowerApp() {
         </>
       )}
 
-      {session?.role === "borrower" && active && (
+      {identity?.role === "borrower" && active && (
         <>
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <div>
@@ -177,7 +184,7 @@ export default function BorrowerApp() {
           </header>
 
           {!kycVerified && (
-            <KycCapture borrowerId={session.id} onDone={() => loadSession()} />
+            <KycCapture borrowerId={identity!.id} onDone={() => loadIdentity()} />
           )}
 
           {kycVerified && (
@@ -209,11 +216,11 @@ export default function BorrowerApp() {
                     <div key={c.id} style={row}>
                       <span>{c.provider}</span>
                       <button className="btn ghost" disabled={busy}
-                        onClick={() => run(() => api(`/api/rep/borrowers/${session.id}/connections`, { revoke: c.id }))}>Revoke</button>
+                        onClick={() => run(() => api(`/api/rep/borrowers/${identity!.id}/connections`, { revoke: c.id }))}>Revoke</button>
                     </div>
                   ))}
                   <button className="btn gold block" style={{ marginTop: 16 }} disabled={busy}
-                    onClick={() => run(() => api(`/api/rep/borrowers/${session.id}/mint`, { months: 6 }))}>
+                    onClick={() => run(() => api(`/api/rep/borrowers/${identity!.id}/mint`, { months: 6 }))}>
                     Update my history from connected providers
                   </button>
                 </section>
@@ -260,7 +267,7 @@ export default function BorrowerApp() {
                   {requests.length === 0 && <p style={{ margin: 0, color: "var(--muted)" }}>No pending requests.</p>}
                   {requests.map((r) => (
                     <div key={r.id} style={{ ...row, alignItems: "flex-start", flexDirection: "column", gap: 10 }}>
-                      <span><b>{r.lenderId}</b> wants to see your cash-flow history and documents</span>
+                      <span><b>{r.lenderName}</b> wants to see your cash-flow history and documents</span>
                       <div style={{ display: "flex", gap: 10 }}>
                         <button className="btn gold" disabled={busy} onClick={() => run(() => api(`/api/rep/disclosures/${r.id}`, { allow: true }))}>Allow</button>
                         <button className="btn ghost" disabled={busy} onClick={() => run(() => api(`/api/rep/disclosures/${r.id}`, { allow: false }))}>Deny</button>

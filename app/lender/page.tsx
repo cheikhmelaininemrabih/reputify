@@ -1,16 +1,18 @@
 "use client";
-// Lender dashboard (roadmap §9) — sign in as one lender (session-locked, can't
-// also be a borrower/attester in the same browser — see lib/session.ts), then
-// search → request → subscribe → verified view → decision → dispute. The
-// Verified ✓ badge appears only when every received package's re-hash
-// matched its on-chain attestation (the check runs server-side).
+// Lender dashboard (roadmap §9) — sign in as one lender, scoped to this
+// browser tab (see components/identity.ts) so a borrower tab open elsewhere
+// keeps working simultaneously. search → request → subscribe → verified
+// view → decision → dispute. The Verified ✓ badge appears only when every
+// received package's re-hash matched its on-chain attestation (the check
+// runs server-side). Polls every few seconds so a borrower's approval in
+// another tab shows up here live.
 import { useEffect, useState } from "react";
 import { api, ngn } from "@/components/api";
 import { RepNav } from "@/components/RepNav";
-import { WrongRole } from "@/components/WrongRole";
+import { getIdentity, setIdentity, clearIdentity, type Identity } from "@/components/identity";
 
 export default function LenderDashboard() {
-  const [session, setSession] = useState<any>(undefined);
+  const [identity, setIdentityState] = useState<Identity | null | undefined>(undefined);
   const [lenders, setLenders] = useState<any[]>([]);
   const [pickId, setPickId] = useState("");
   const [newName, setNewName] = useState("");
@@ -27,20 +29,19 @@ export default function LenderDashboard() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  async function loadSession() {
-    const r = await api("/api/rep/session");
-    if (r.session?.role === "lender") {
-      const exists = (await api("/api/rep/lenders")).lenders.some((x: any) => x.id === r.session.id);
+  async function loadIdentity() {
+    const i = getIdentity();
+    if (i?.role === "lender") {
+      const exists = (await api("/api/rep/lenders")).lenders.some((x: any) => x.id === i.id);
       if (!exists) {
-        // Session points at a lender that no longer exists (e.g. "Reset demo
-        // data" wiped the store but not the cookie) — clear the stale session
-        // so the sign-in/register flow shows again.
-        await fetch("/api/rep/session", { method: "DELETE" });
-        setSession(null);
+        // Points at a lender that no longer exists (e.g. "Reset demo data"
+        // wiped the store) — stale, clear it so sign-in/register shows again.
+        clearIdentity();
+        setIdentityState(null);
         return;
       }
     }
-    setSession(r.session);
+    setIdentityState(i);
   }
   async function loadLenders() {
     const r = await api("/api/rep/lenders");
@@ -67,27 +68,35 @@ export default function LenderDashboard() {
     setChallenges(c.challenges);
     if (v.granularAllowed) setRequested(true);
   }
-  useEffect(() => { loadSession().catch((e) => setErr(e.message)); }, []);
-  useEffect(() => { if (!session) loadLenders().catch(() => {}); }, [session]);
-  useEffect(() => { if (session?.role === "lender") { loadBorrowers().catch((e) => setErr(e.message)); loadSub(session.id).catch(() => {}); } }, [session]);
-  useEffect(() => { setRequested(false); if (session?.role === "lender" && sel) loadView(sel, session.id).catch((e) => setErr(e.message)); }, [sel, session]);
+  useEffect(() => { loadIdentity().catch((e) => setErr(e.message)); }, []);
+  useEffect(() => { if (!identity) loadLenders().catch(() => {}); }, [identity]);
+  useEffect(() => { if (identity?.role === "lender") { loadBorrowers().catch((e) => setErr(e.message)); loadSub(identity.id).catch(() => {}); } }, [identity]);
+  useEffect(() => { setRequested(false); if (identity?.role === "lender" && sel) loadView(sel, identity.id).catch((e) => setErr(e.message)); }, [sel, identity]);
+  // Live tracking: pick up a borrower's approval/disclosure/document changes
+  // made in another tab without a manual refresh.
+  useEffect(() => {
+    if (identity?.role !== "lender" || !sel) return;
+    const t = setInterval(() => { loadView(sel, identity.id).catch(() => {}); }, 4000);
+    return () => clearInterval(t);
+  }, [identity, sel]);
 
   async function run(fn: () => Promise<any>) {
     setBusy(true); setErr("");
-    try { await fn(); await loadView(sel, session.id); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); await loadView(sel, identity!.id); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
-  async function signInAs(id: string) {
-    setBusy(true); setErr("");
-    try { await api("/api/rep/session", { role: "lender", id }); await loadSession(); }
-    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  function signInAs(id: string) {
+    const l = lenders.find((x) => x.id === id);
+    if (!l) return;
+    setIdentity({ role: "lender", id, name: l.name });
+    loadIdentity();
   }
   async function registerAndSignIn() {
     setBusy(true); setErr("");
     try {
       const r = await api("/api/rep/lenders", { name: newName });
-      await api("/api/rep/session", { role: "lender", id: r.lender.id });
+      setIdentity({ role: "lender", id: r.lender.id, name: r.lender.name });
       setNewName("");
-      await loadSession();
+      await loadIdentity();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -101,11 +110,9 @@ export default function LenderDashboard() {
       <RepNav />
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "36px 20px" }}>
 
-        {session === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
+        {identity === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
 
-        {session && session.role !== "lender" && <WrongRole session={session} wantRole="lender" />}
-
-        {session === null && (
+        {identity !== undefined && identity?.role !== "lender" && (
           <>
             <h1 style={{ margin: "0 0 18px", fontSize: 24, fontFamily: "var(--font-display)" }}>Lender dashboard — sign in</h1>
             {lenders.length > 0 && (
@@ -130,16 +137,16 @@ export default function LenderDashboard() {
           </>
         )}
 
-        {session?.role === "lender" && (
+        {identity?.role === "lender" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
               <h1 style={{ margin: 0, fontSize: 24, fontFamily: "var(--font-display)" }}>Lender dashboard</h1>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span style={{ fontWeight: 600 }}>{session.name}</span>
+                <span style={{ fontWeight: 600 }}>{identity!.name}</span>
                 {sub?.active ? (
                   <span style={badge}>Subscribed ✓</span>
                 ) : (
-                  <button className="btn gold" disabled={busy} onClick={() => run(async () => { await api("/api/rep/lenders/subscribe", { lenderId: session.id }); await loadSub(session.id); })}>
+                  <button className="btn gold" disabled={busy} onClick={() => run(async () => { await api("/api/rep/lenders/subscribe", { lenderId: identity!.id }); await loadSub(identity!.id); })}>
                     Subscribe
                   </button>
                 )}
@@ -168,7 +175,7 @@ export default function LenderDashboard() {
                   <div style={{ marginTop: 16 }}>
                     {!requested ? (
                       <button className="btn teal" disabled={busy}
-                        onClick={() => run(async () => { await api("/api/rep/disclosures", { borrowerId: sel, lenderId: session.id }); setRequested(true); })}>
+                        onClick={() => run(async () => { await api("/api/rep/disclosures", { borrowerId: sel, lenderId: identity!.id }); setRequested(true); })}>
                         Request granular access
                       </button>
                     ) : (
@@ -185,7 +192,7 @@ export default function LenderDashboard() {
                     <p style={{ margin: "0 0 10px", color: "var(--warn)", fontWeight: 600 }}>
                       {rep.name} approved your request — subscribe to see the verified, granular data.
                     </p>
-                    <button className="btn gold" disabled={busy} onClick={() => run(async () => { await api("/api/rep/lenders/subscribe", { lenderId: session.id }); await loadSub(session.id); })}>
+                    <button className="btn gold" disabled={busy} onClick={() => run(async () => { await api("/api/rep/lenders/subscribe", { lenderId: identity!.id }); await loadSub(identity!.id); })}>
                       Subscribe to unlock
                     </button>
                   </div>
@@ -234,7 +241,7 @@ export default function LenderDashboard() {
                     <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16, flexWrap: "wrap" }}>
                       <input className="inp" style={{ width: 160 }} type="number" value={principal} onChange={(e) => setPrincipal(Number(e.target.value))} />
                       <button className="btn gold" disabled={busy}
-                        onClick={() => run(() => api("/api/rep/loans", { lender: session.id, borrower: sel, principal, dueAt, reliedOn }))}>
+                        onClick={() => run(() => api("/api/rep/loans", { lender: identity!.id, borrower: sel, principal, dueAt, reliedOn }))}>
                         Issue loan
                       </button>
                     </div>
@@ -254,8 +261,8 @@ export default function LenderDashboard() {
                         <span>{ngn(l.principal)} · <b>{l.state}</b></span>
                         {l.state === "Active" && (
                           <span style={{ display: "flex", gap: 8 }}>
-                            <button className="btn ghost" disabled={busy} onClick={() => run(() => api(`/api/rep/loans/${l.loanId}`, { action: "repaid", by: session.id }))}>Mark repaid</button>
-                            <button className="btn ghost" disabled={busy} onClick={() => run(() => api(`/api/rep/loans/${l.loanId}`, { action: "defaulted", by: session.id }))}>Mark defaulted</button>
+                            <button className="btn ghost" disabled={busy} onClick={() => run(() => api(`/api/rep/loans/${l.loanId}`, { action: "repaid", by: identity!.id }))}>Mark repaid</button>
+                            <button className="btn ghost" disabled={busy} onClick={() => run(() => api(`/api/rep/loans/${l.loanId}`, { action: "defaulted", by: identity!.id }))}>Mark defaulted</button>
                           </span>
                         )}
                         {l.state === "Defaulted" && !ch && (

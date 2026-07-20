@@ -1,18 +1,20 @@
 "use client";
 // Attester + governance ops (roadmap §9 "attester job — headless, optional ops
-// dashboard"). Sign in as one attester (session-locked, can't also be a
-// borrower/lender in the same browser — see lib/session.ts). Shows the
-// attester marketplace (bond + real track record — an upheld dispute is a
-// much stronger signal than bond size alone), the attestations posted, and
-// the arbiter's dispute queue (uphold ⇒ slash) — shared governance views,
-// not filtered to "your" attester specifically.
+// dashboard"). Sign in as one attester, scoped to this browser tab (see
+// components/identity.ts) — a borrower or lender tab open elsewhere keeps
+// working simultaneously. Shows the attester marketplace (bond + real track
+// record — an upheld dispute is a much stronger signal than bond size
+// alone), the attestations posted, and the arbiter's dispute queue (uphold
+// ⇒ slash) — shared governance views, not filtered to "your" attester
+// specifically. Polls every few seconds so activity from other tabs (a new
+// attestation minted, a dispute raised or ruled) shows up live.
 import { useEffect, useState } from "react";
 import { api } from "@/components/api";
 import { RepNav } from "@/components/RepNav";
-import { WrongRole } from "@/components/WrongRole";
+import { getIdentity, setIdentity, clearIdentity, type Identity } from "@/components/identity";
 
 export default function AttesterOps() {
-  const [session, setSession] = useState<any>(undefined);
+  const [identity, setIdentityState] = useState<Identity | null | undefined>(undefined);
   const [state, setState] = useState<any>(null);
   const [attesters, setAttesters] = useState<any[]>([]);
   const [pickAddr, setPickAddr] = useState("");
@@ -21,45 +23,51 @@ export default function AttesterOps() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  async function loadSession() {
-    const r = await api("/api/rep/session");
-    if (r.session?.role === "attester") {
-      const exists = (await api("/api/rep/attesters")).attesters.some((x: any) => x.address === r.session.id);
+  async function loadIdentity() {
+    const i = getIdentity();
+    if (i?.role === "attester") {
+      const exists = (await api("/api/rep/attesters")).attesters.some((x: any) => x.address === i.id);
       if (!exists) {
-        // Session points at an attester that no longer exists (e.g. "Reset
-        // demo data" wiped the store but not the cookie) — clear the stale
-        // session so the sign-in/register flow shows again.
-        await fetch("/api/rep/session", { method: "DELETE" });
-        setSession(null);
+        // Points at an attester that no longer exists (e.g. "Reset demo
+        // data" wiped the store) — stale, clear so sign-in/register shows again.
+        clearIdentity();
+        setIdentityState(null);
         return;
       }
     }
-    setSession(r.session);
+    setIdentityState(i);
   }
   async function refresh() {
     const [s, a] = await Promise.all([api("/api/rep/state"), api("/api/rep/attesters")]);
     setState(s);
     setAttesters(a.attesters);
   }
-  useEffect(() => { loadSession().catch((e) => setErr(e.message)); }, []);
+  useEffect(() => { loadIdentity().catch((e) => setErr(e.message)); }, []);
   useEffect(() => { refresh().catch((e) => setErr(e.message)); }, []);
+  // Live tracking: the marketplace + dispute queue are shared governance
+  // views — keep them current with whatever other tabs are doing.
+  useEffect(() => {
+    const t = setInterval(() => { refresh().catch(() => {}); }, 4000);
+    return () => clearInterval(t);
+  }, []);
 
   async function run(fn: () => Promise<any>) {
     setBusy(true); setErr("");
     try { await fn(); await refresh(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
-  async function signInAs(address: string) {
-    setBusy(true); setErr("");
-    try { await api("/api/rep/session", { role: "attester", id: address }); await loadSession(); }
-    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  function signInAs(address: string) {
+    const a = attesters.find((x) => x.address === address);
+    if (!a) return;
+    setIdentity({ role: "attester", id: address, name: a.name });
+    loadIdentity();
   }
   async function registerAndSignIn() {
     setBusy(true); setErr("");
     try {
       const r = await api("/api/rep/attesters", { name, stake });
-      await api("/api/rep/session", { role: "attester", id: r.attester.address });
+      setIdentity({ role: "attester", id: r.attester.address, name: r.attester.name });
       setName("");
-      await Promise.all([loadSession(), refresh()]);
+      await Promise.all([loadIdentity(), refresh()]);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -71,11 +79,9 @@ export default function AttesterOps() {
       <RepNav />
       <div style={{ maxWidth: 820, margin: "0 auto", padding: "36px 20px" }}>
 
-        {session === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
+        {identity === undefined && <p style={{ color: "var(--muted)" }}>Loading…</p>}
 
-        {session && session.role !== "attester" && <WrongRole session={session} wantRole="attester" />}
-
-        {session === null && (
+        {identity !== undefined && identity?.role !== "attester" && (
           <>
             <h1 style={{ margin: "0 0 18px", fontSize: 24, fontFamily: "var(--font-display)" }}>Attester ops — sign in</h1>
             {attesters.length > 0 && (
@@ -101,11 +107,11 @@ export default function AttesterOps() {
           </>
         )}
 
-        {session?.role === "attester" && (
+        {identity?.role === "attester" && (
           <>
             <h1 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "var(--font-display)" }}>Attester &amp; governance ops</h1>
             <p style={{ color: "var(--muted)", marginTop: 0 }}>
-              Signed in as <b>{session.name}</b> · {state?.attestations ?? 0} attestations posted · mode {state?.mode}
+              Signed in as <b>{identity.name}</b> · {state?.attestations ?? 0} attestations posted · mode {state?.mode}
             </p>
 
             <section className="card pad" style={{ marginBottom: 16 }}>

@@ -53,20 +53,31 @@ Two decoupled on-chain "worlds" joined by the backend, plus off-chain encrypted 
    tampering with it (by the backend, a compromised DB, anyone) is detectable without ever
    exposing it publicly.
 
-## Roles are separated (`lib/session.ts`)
+## Roles are separated per browser tab (`components/identity.ts`)
 
-A single `rep_session` cookie holds exactly one `{role, id}` at a time — the same browser can't
-act as a borrower and a lender (or attester) simultaneously. Signing in on `/borrower` while
-already signed in as a lender shows a blocking "you're signed in as a lender, sign out to
-continue" card (`components/WrongRole.tsx`) instead of the page. `POST /api/rep/session` validates
-the id actually exists in that role's table before setting the cookie; `DELETE` signs out.
-`components/RepNav.tsx` shows the current identity + a Sign out button on every page. This is a
-**UI-level safeguard, not a hardened authorization layer** — the underlying `/api/rep/*` endpoints
-still trust whatever id is passed to them (same PoC trust boundary as elsewhere: e.g. the disputes
-endpoint doesn't check the caller is really the loan's lender), and `scripts/scenarios.mjs`
-deliberately bypasses the session layer entirely by calling those endpoints directly. No passwords
-— signing in as an existing identity just means picking it from a list, same as borrowers/attesters
-never had passwords either.
+Identity is `sessionStorage`-scoped, not a cookie — `sessionStorage` is per top-level browsing
+context (tab/window), so a borrower tab and a lender tab open side by side in the *same browser*
+stay fully independent and simultaneous, each polling and updating live, instead of one stomping
+the other's identity the way a shared cookie would (that was the first version of this — wrong;
+fixed after user feedback). Within a single tab it's still one role at a time: `getIdentity()` /
+`setIdentity()` / `clearIdentity()` read/write a `rep_identity` key holding `{role, id, name}`, no
+server round-trip needed since there are no passwords — picking an identity just means selecting
+it from an already-fetched list. Each of `/borrower /lender /attester` shows its own sign-in/
+register flow whenever the tab's stored identity doesn't match that page's role (no blocking
+screen anymore — just sign in as whatever this tab needs). `components/RepNav.tsx` shows the
+current tab's identity + a Sign out button. This is a **UI-level convenience, not a hardened
+authorization layer** — the underlying `/api/rep/*` endpoints still trust whatever id is passed to
+them (same PoC trust boundary as elsewhere: e.g. the disputes endpoint doesn't check the caller is
+really the loan's lender), and `scripts/scenarios.mjs` calls those endpoints directly, bypassing
+identity entirely.
+
+**Live polling**: `/borrower`, `/lender`, and `/attester` each poll their own data every 4s
+(`setInterval`, cleaned up on unmount) so activity in one tab — a lender's disclosure request, a
+borrower's approval, a newly-minted attestation, a ruled dispute — shows up in every other open
+tab without a manual refresh. The same poll also self-heals a stale identity: if "Reset demo data"
+wiped the entity a tab's `rep_identity` points at, the next poll notices it's gone, clears it, and
+falls back to the sign-in flow instead of rendering a blank page (this exact bug shipped once —
+worth remembering: any reset flow must account for stale client-side state, not just server data).
 
 ## Routes
 

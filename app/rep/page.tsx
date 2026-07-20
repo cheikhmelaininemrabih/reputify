@@ -1,10 +1,13 @@
 "use client";
 // Demo hub for the attestation-and-lending system (the technical roadmap).
-// Links to the three client surfaces and shows the on-chain mode.
+// Links to the three client surfaces and shows the on-chain mode. Polls so
+// this genuinely reads as a live dashboard of every open borrower/lender/
+// attester tab's activity, not a snapshot from whenever you last loaded it.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/components/api";
 import { RepNav } from "@/components/RepNav";
+import { clearIdentity } from "@/components/identity";
 
 export default function RepHub() {
   const [mode, setMode] = useState<string>("…");
@@ -19,6 +22,10 @@ export default function RepHub() {
     });
   }
   useEffect(() => { refresh().catch(() => {}); }, []);
+  useEffect(() => {
+    const t = setInterval(() => { refresh().catch(() => {}); }, 4000);
+    return () => clearInterval(t);
+  }, []);
 
   const surfaces = [
     { href: "/borrower", title: "Borrower app", body: "Connect providers, see your standing, approve lender requests. The chain is invisible." },
@@ -62,7 +69,7 @@ export default function RepHub() {
         style={{ marginTop: 26 }}
         onClick={async () => {
           await api("/api/rep/state", { reset: true });
-          await fetch("/api/rep/session", { method: "DELETE" }); // reset wipes every identity — any signed-in session is now stale
+          clearIdentity(); // this tab's identity is now stale; other open tabs self-heal within one poll cycle
           await refresh();
         }}
       >

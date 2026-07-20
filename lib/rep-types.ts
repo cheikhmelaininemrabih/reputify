@@ -147,7 +147,7 @@ export interface AttestationMsg {
 /** A lender's identity — deliberately minimal (name only), same "PoC
  *  simplification, no passwords" pattern as Borrower/Attester. Exists so a
  *  lender can sign in as *one* identity, the same way a borrower does — see
- *  lib/session.ts. */
+ *  components/identity.ts. */
 export interface Lender {
   id: string;
   name: string;

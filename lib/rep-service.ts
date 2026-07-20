@@ -103,7 +103,7 @@ export function ensureDefaultAttester(): Attester {
 
 /** Register a lender identity — minimal on purpose (name only), the same "no
  *  passwords" PoC pattern as borrowers/attesters. Exists so a lender can sign
- *  in as one identity via lib/session.ts, instead of typing any lender name
+ *  in as one identity via components/identity.ts, instead of typing any lender name
  *  into a free-text box. */
 export function onboardLender(name: string): Lender {
   if (!name.trim()) throw new Error("name is required");
