@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "e2e": "node e2e-shot.mjs",
-    "shots": "node shots.mjs"
+    "shots": "node shots.mjs",
+    "scenarios": "node scripts/scenarios.mjs"
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.81.0",

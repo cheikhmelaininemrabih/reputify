@@ -125,6 +125,9 @@ export interface ConsentReceipt {
   expiresAt: string;
   signature: string; // borrower key signature over the receipt
   commitment: string; // sha256 of the receipt — anchored on Hedera
+  revoked?: boolean;
+  revokedAt?: string;
+  revocationCommitment?: string; // sha256 of the revocation event — anchored on Hedera
 }
 
 /** What a bank actually receives — attestations, never the raw feed. */

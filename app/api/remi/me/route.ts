@@ -10,6 +10,9 @@ export async function GET() {
 
   const { sources } = pullLinkedTxns(user);
   const passport = user.passportId ? db.passports[user.passportId] : undefined;
+  const consents = user.passportId
+    ? Object.values(db.consents).filter((c) => c.passportId === user.passportId).sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1))
+    : [];
 
   // On-chain identity ledger: every anchor tied to this user (DID, KYC, passport, consents).
   const ledger = [
@@ -22,6 +25,7 @@ export async function GET() {
     user: publicUser(user),
     sources,
     passport: passport ? { score: passport.score, commitment: passport.commitment, features: passport.features, issuedAt: passport.issuedAt, aiRisk: passport.aiRisk } : null,
+    consents,
     ledger,
   });
 }

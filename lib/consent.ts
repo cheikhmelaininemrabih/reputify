@@ -39,6 +39,14 @@ export function issueConsent(
 
 export function isConsentValid(c: ConsentReceipt, audience: string): { ok: boolean; reason?: string } {
   if (c.audience !== audience) return { ok: false, reason: "Consent was issued for a different institution." };
+  if (c.revoked) return { ok: false, reason: "Consent was revoked by the borrower." };
   if (new Date(c.expiresAt).getTime() < Date.now()) return { ok: false, reason: "Consent has expired." };
   return { ok: true };
+}
+
+/** Revoke a previously issued consent. Revocation is itself anchored (as a new
+ *  commitment over the same consentId) so a bank cannot claim it never happened. */
+export function revokeConsentBody(c: ConsentReceipt) {
+  const revokedAt = new Date().toISOString();
+  return { revokedAt, commitment: commit({ consentId: c.consentId, revoked: true, revokedAt }) };
 }

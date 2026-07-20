@@ -16,6 +16,7 @@ export function AppHeader({
         </Link>
         <nav className="navlinks">
           {links.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
+          <Link href="/rep" style={{ color: "var(--muted)" }}>Attestation network</Link>
           <Link href="/" style={{ color: "var(--muted)" }}>All systems ↗</Link>
           {showChain && <ChainStatus />}
         </nav>

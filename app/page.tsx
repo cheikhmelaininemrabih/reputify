@@ -37,6 +37,9 @@ export default function Hub() {
           <SysCard href="/bank" ic="🏦" title="Bank portal" tag="LenderHub" c="#2f5fd0">
             Lenders review a pool of consented applicants, see the score and risk signals, and decide who to approve — without ever seeing raw data.
           </SysCard>
+          <SysCard href="/rep" ic="⚖️" title="Attestation & lending" tag="Reputify network" c="#7a3fd0">
+            A second, decoupled on-chain world: bonded attesters post signed throughput attestations to HCS, lenders issue loans against them, and a fraud challenge slashes a lying attester&apos;s stake.
+          </SysCard>
         </div>
       </section>
 

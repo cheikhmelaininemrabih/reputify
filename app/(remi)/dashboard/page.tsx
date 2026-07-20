@@ -16,7 +16,12 @@ export default function Dashboard() {
   const [consent, setConsent] = useState<any>(null);
 
   const refresh = useCallback(async () => {
-    try { const d = await api("/api/remi/me"); setMe(d); }
+    try {
+      const d = await api("/api/remi/me");
+      setMe(d);
+      const active = (d.consents ?? []).find((c: any) => c.audience === "bank:launch");
+      if (active) setConsent(active);
+    }
     catch { router.push("/login"); }
     finally { setLoading(false); }
   }, [router]);
@@ -31,6 +36,12 @@ export default function Dashboard() {
   async function grant() {
     setErr(""); setBusy("consent");
     try { const d = await api("/api/remi/consent", { audience: "bank:launch" }); setConsent(d.consent); await refresh(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(""); }
+  }
+  async function revoke() {
+    if (!consent) return;
+    setErr(""); setBusy("revoke");
+    try { const d = await api("/api/remi/consent/revoke", { consentId: consent.consentId }); setConsent(d.consent); }
     catch (e: any) { setErr(e.message); } finally { setBusy(""); }
   }
   async function logout() { await api("/api/remi/logout", {}); router.push("/"); }
@@ -142,17 +153,28 @@ export default function Dashboard() {
         </StepCard>
 
         {/* Consent */}
-        <StepCard n={4} title="Share with a bank" done={!!consent} active={!!pp} locked={!pp}>
-          {!consent ? (
-            <button className="btn gold" onClick={grant} disabled={busy === "consent"}>{busy === "consent" ? <><span className="spinner" /> Signing + anchoring consent…</> : "Grant consent to launch bank"}</button>
+        <StepCard n={4} title="Share with a bank" done={!!consent && !consent.revoked} active={!!pp} locked={!pp}>
+          {!consent || consent.revoked ? (
+            <div>
+              {consent?.revoked && (
+                <div className="fraud" style={{ marginBottom: 12 }}>
+                  <span>⚠</span>
+                  <div>Consent <span className="mono">{consent.consentId.slice(0, 18)}…</span> was revoked at {new Date(consent.revokedAt).toLocaleTimeString()} — the revocation is anchored, and the bank can no longer query this Passport under it.</div>
+                </div>
+              )}
+              <button className="btn gold" onClick={grant} disabled={busy === "consent"}>{busy === "consent" ? <><span className="spinner" /> Signing + anchoring consent…</> : "Grant consent to launch bank"}</button>
+            </div>
           ) : (
             <div>
               <div className="clean" style={{ marginBottom: 12 }}><span>✓</span><div>Consent signed with your key and anchored. Valid until {new Date(consent.expiresAt).toLocaleTimeString()}.</div></div>
               <div className="label">Hand this consent ID to the bank</div>
               <code style={{ display: "block", padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, margin: "8px 0", border: "1px solid var(--line)", wordBreak: "break-all" }}>{consent.consentId}</code>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(consent.consentId)}>Copy</button>
                 <Link className="btn primary" href="/bank">Open bank console →</Link>
+                <button className="btn ghost" style={{ borderColor: "var(--red)", color: "var(--red)" }} onClick={revoke} disabled={busy === "revoke"}>
+                  {busy === "revoke" ? <><span className="spinner" /> Revoking…</> : "Revoke consent"}
+                </button>
               </div>
             </div>
           )}
