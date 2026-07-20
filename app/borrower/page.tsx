@@ -38,10 +38,22 @@ export default function BorrowerApp() {
 
   async function loadSession() {
     const r = await api("/api/rep/session");
-    setSession(r.session);
     if (r.session?.role === "borrower") {
       const b = (await api("/api/rep/borrowers")).borrowers.find((x: any) => x.id === r.session.id);
-      setActive(b ?? null);
+      if (!b) {
+        // Session points at a borrower that no longer exists (e.g. "Reset demo
+        // data" wiped the store but not the cookie) — stale session, not a
+        // valid one. Clear it so the sign-in/create flow shows again instead
+        // of leaving the page blank with no way to create a new account.
+        await fetch("/api/rep/session", { method: "DELETE" });
+        setSession(null);
+        setActive(null);
+        return;
+      }
+      setActive(b);
+      setSession(r.session);
+    } else {
+      setSession(r.session);
     }
   }
   async function loadBorrowers() {

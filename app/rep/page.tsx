@@ -60,7 +60,11 @@ export default function RepHub() {
       <button
         className="btn ghost"
         style={{ marginTop: 26 }}
-        onClick={async () => { await api("/api/rep/state", { reset: true }); refresh(); }}
+        onClick={async () => {
+          await api("/api/rep/state", { reset: true });
+          await fetch("/api/rep/session", { method: "DELETE" }); // reset wipes every identity — any signed-in session is now stale
+          await refresh();
+        }}
       >
         Reset demo data
       </button>

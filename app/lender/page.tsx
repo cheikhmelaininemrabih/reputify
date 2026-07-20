@@ -29,6 +29,17 @@ export default function LenderDashboard() {
 
   async function loadSession() {
     const r = await api("/api/rep/session");
+    if (r.session?.role === "lender") {
+      const exists = (await api("/api/rep/lenders")).lenders.some((x: any) => x.id === r.session.id);
+      if (!exists) {
+        // Session points at a lender that no longer exists (e.g. "Reset demo
+        // data" wiped the store but not the cookie) — clear the stale session
+        // so the sign-in/register flow shows again.
+        await fetch("/api/rep/session", { method: "DELETE" });
+        setSession(null);
+        return;
+      }
+    }
     setSession(r.session);
   }
   async function loadLenders() {

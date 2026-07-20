@@ -23,6 +23,17 @@ export default function AttesterOps() {
 
   async function loadSession() {
     const r = await api("/api/rep/session");
+    if (r.session?.role === "attester") {
+      const exists = (await api("/api/rep/attesters")).attesters.some((x: any) => x.address === r.session.id);
+      if (!exists) {
+        // Session points at an attester that no longer exists (e.g. "Reset
+        // demo data" wiped the store but not the cookie) — clear the stale
+        // session so the sign-in/register flow shows again.
+        await fetch("/api/rep/session", { method: "DELETE" });
+        setSession(null);
+        return;
+      }
+    }
     setSession(r.session);
   }
   async function refresh() {
