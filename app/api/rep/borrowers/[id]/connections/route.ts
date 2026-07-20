@@ -14,14 +14,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 // POST — start connecting a provider (mock OAuth, creates a pending request),
-// approve/deny a pending request, or revoke an already-approved one.
+// deny a pending request, or revoke an already-approved one. Approving is
+// deliberately NOT available here — that only happens inside the matching
+// wallet app (POST /api/rep/wallets/[id]/authorize), the same way you'd
+// approve a third-party app from inside your own bank, not from inside the
+// app asking for access.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = (await req.json()) as {
       provider?: "OPay" | "Moniepoint" | "PalmPay"; revoke?: string; decide?: string; approve?: boolean;
     };
     if (body.decide) {
-      const c = decideConnection(body.decide, !!body.approve);
+      if (body.approve) {
+        return NextResponse.json({ error: "approving a connection must be done from inside the matching wallet, not the borrower app" }, { status: 400 });
+      }
+      const c = decideConnection(body.decide, false);
       return NextResponse.json({ ok: true, connection: { id: c.id, status: c.status } });
     }
     if (body.revoke) {

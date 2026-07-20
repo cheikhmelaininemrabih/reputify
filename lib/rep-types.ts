@@ -45,8 +45,11 @@ export interface Borrower {
 
 /** A connected mobile-money provider = standing consent (revocable OAuth token).
  *  Modelled like a real PSP OAuth flow: connecting creates a "pending" request
- *  with the requested scope; the borrower has to explicitly approve it (mirrors
- *  the provider's own consent screen) before it counts for anything. */
+ *  with the requested scope. Approval is a *separate app* — the wallet — not a
+ *  button inside the borrower app: the borrower app can only deny; only a
+ *  signed-in WalletAccount for the matching provider can authorize, the same
+ *  way you'd approve a third-party app from inside your actual bank/wallet,
+ *  not from inside the app asking for access. */
 export interface Connection {
   id: string;
   borrowerId: string;
@@ -54,9 +57,35 @@ export interface Connection {
   tokenEnc: string;    // PSP OAuth token, encrypted at rest
   scope: string[];
   status: "pending" | "approved" | "denied";
+  walletId?: string;   // set only once a real wallet authorizes it
   connectedAt: string;
   decidedAt?: string;
   revoked?: boolean;
+}
+
+/** A single ledger line a wallet owner enters by hand ("static data") — amount
+ *  positive = inflow, negative = outflow. This is what actually drives the
+ *  cash-flow package once a connection is authorized: real numbers the wallet
+ *  owner controls, not a synthetic generator. */
+export interface WalletTxn {
+  id: string;
+  amount: number;   // NGN; sign carries direction
+  description: string;
+  category: "income" | "bill" | "transfer" | "betting" | "other";
+  at: string;        // ISO date
+}
+
+/** A mobile-money wallet — its own app, its own identity, nothing to do with
+ *  being a Reputify borrower. Provider + phone is the account; a Connection
+ *  only becomes real once one of these authorizes it. */
+export interface WalletAccount {
+  id: string;
+  provider: "OPay" | "Moniepoint" | "PalmPay";
+  phone: string;
+  name: string;
+  balance: number;
+  createdAt: string;
+  txns: WalletTxn[];
 }
 
 export type AssetKind = "ownership" | "utility_water" | "utility_electricity" | "utility_gas" | "other";

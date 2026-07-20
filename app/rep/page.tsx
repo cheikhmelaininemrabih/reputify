@@ -29,6 +29,7 @@ export default function RepHub() {
 
   const surfaces = [
     { href: "/borrower", title: "Borrower app", body: "Connect providers, see your standing, approve lender requests. The chain is invisible." },
+    { href: "/wallet", title: "Mobile-money wallet", body: "A separate app — OPay/Moniepoint/PalmPay. Real ledger you enter by hand; authorizing a connection only happens here." },
     { href: "/lender", title: "Lender dashboard", body: "Search a borrower, request granular access, verify, and decide." },
     { href: "/attester", title: "Attester ops", body: "Bond status and the attestations the minting job has posted." },
   ];

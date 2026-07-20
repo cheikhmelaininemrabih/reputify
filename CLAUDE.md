@@ -71,7 +71,7 @@ them (same PoC trust boundary as elsewhere: e.g. the disputes endpoint doesn't c
 really the loan's lender), and `scripts/scenarios.mjs` calls those endpoints directly, bypassing
 identity entirely.
 
-**Live polling**: `/borrower`, `/lender`, and `/attester` each poll their own data every 4s
+**Live polling**: `/borrower`, `/wallet`, `/lender`, and `/attester` each poll their own data every 4s
 (`setInterval`, cleaned up on unmount) so activity in one tab — a lender's disclosure request, a
 borrower's approval, a newly-minted attestation, a ruled dispute — shows up in every other open
 tab without a manual refresh. The same poll also self-heals a stale identity: if "Reset demo data"
@@ -87,8 +87,9 @@ dead ends.
 
 | Route | Who | Notes |
 |---|---|---|
-| `/` | marketing/investor landing | links to the three surfaces below |
-| `/borrower` | borrower app | onboard (name/phone/`personhoodId` — one identity per person, anti-Sybil) → **KYC gate** (real webcam ID photo + live selfie, compared client-side with face-api.js — see below) → connect a provider (mock PSP stands in for OPay/Moniepoint/PalmPay; each connection is a **pending request the borrower explicitly approves**, via a modal mirroring the provider's own OAuth consent screen, not an instant one-click connect) → **Documents tab** (upload ownership/utility-bill files, anchored the same way as cash-flow data) → see plain-language standing → approve/deny lender disclosure requests. Chain is invisible here. |
+| `/` | marketing/investor landing | links to the four surfaces below |
+| `/borrower` | borrower app | onboard (name/phone/`personhoodId` — one identity per person, anti-Sybil) → **KYC gate** (real webcam ID photo + live selfie, compared client-side with face-api.js — see below) → *request* a provider connection → **Documents tab** (upload ownership/utility-bill files, anchored the same way as cash-flow data) → see plain-language standing → approve/deny lender disclosure requests. Chain is invisible here. **Cannot approve its own connection requests** — see `/wallet`. |
+| `/wallet` | mobile-money wallet — **a genuinely separate app** | sign in as a wallet (provider + phone, nothing to do with being a Reputify borrower), see a real balance, **add transactions by hand** (amount/description/category — this is the actual data a cash-flow package is built from once connected, `lib/wallets.ts` `packageFromWallet`), and — the only place this can happen — **authorize a pending connection request**. Reached via a link the borrower app hands out (`/wallet?authorize=<connectionId>`), same as a real OAuth redirect. |
 | `/lender` | lender dashboard | search a borrower, see the free summary, request granular access, **subscribe** (static/mock — no real billing, just flips a flag; gates the granular view even after the borrower has allowed disclosure), verify (with a "View on Hedera" link per package/document, straight to the real mirror-node record), issue loans, **raise a fraud dispute** on a defaulted loan (evidence note + submit, inline with the loan row) |
 | `/attester` | attester ops + **marketplace** | bond, accreditation, and real track record per attester (attestations posted, disputes raised/upheld against them — bond size alone isn't the trust signal, an upheld dispute is) + the arbiter's dispute queue |
 | `/rep` | live status hub | mode (live/simulated) + counts, "Reset demo data" button |
@@ -131,6 +132,32 @@ Static/mock by explicit request — no payment processor. `subscribe()`/`isSubsc
 flag in `rdb.lenderSubs`. The free tier is always the plain-language summary; a subscription is
 what unlocks verified, granular, on-chain-checked detail once a borrower has *also* separately
 allowed disclosure — two independent gates (`lib/disclosure.ts` `lenderGranularView` checks both).
+
+### Wallets (`lib/wallets.ts`) — the fourth app, and where "static data" actually goes
+
+Added on explicit user feedback: "the wallets need to be their own app, a user needs to authorize
+from inside his wallet." A `WalletAccount` (provider + phone + name) has nothing to do with being
+a Reputify borrower — it's a fully separate identity (4th role in `components/identity.ts`).
+
+- **Requesting ≠ approving.** `connectProvider` (borrower side) only ever creates a `"pending"`
+  `Connection`. Approving one is deliberately **not exposed** on the borrower connections route —
+  `POST /api/rep/borrowers/[id]/connections` rejects `approve: true` outright. The only way a
+  connection becomes `"approved"` is `POST /api/rep/wallets/[id]/authorize`, which also stamps
+  `Connection.walletId`. This mirrors real OAuth: you grant access from inside the provider you're
+  trusting, not from inside the app asking for it.
+- **The handoff**: the borrower app shows "Open my {provider} wallet to authorize ↗" —
+  `/wallet?authorize=<connectionId>` — meant to be opened in a new tab (`target="_blank"`), same
+  multi-tab-simultaneous model as the rest of the app. The wallet page reads the `authorize` query
+  param, fetches that one connection's public details (`GET /api/rep/connections/[id]` — provider,
+  scope, requesting borrower's name), and shows an Allow/Deny panel for exactly that request.
+- **Real "static data"**: a wallet owner adds transactions by hand (amount, sign = direction,
+  description, category) — `addTransaction` in `lib/wallets.ts`. This is genuinely what drives the
+  cash-flow package: `lib/minting.ts` `mintOne` checks `connection.walletId` and, if that wallet has
+  entered transactions for the period being minted, builds the `GranularPackage` from those real
+  numbers (`packageFromWallet` — derived math, no randomness). If the wallet has nothing for that
+  period, it falls back to the synthetic `mock-psp.ts` generator (demo convenience, and what
+  `scripts/scenarios.mjs` relies on — its wallets are opened but never given transactions, so
+  minting there is 100% synthetic fallback, same behavior as before this feature existed).
 
 ## Architecture (`lib/`)
 

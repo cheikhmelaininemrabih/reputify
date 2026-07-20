@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   AssetDocument, Attester, AttestationMsg, Borrower, Challenge, Connection,
-  Disclosure, EncryptedFile, EncryptedPackage, Lender, LenderSub, Loan,
+  Disclosure, EncryptedFile, EncryptedPackage, Lender, LenderSub, Loan, WalletAccount,
 } from "./rep-types";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -34,6 +34,7 @@ interface RepSchema {
   files: Record<string, EncryptedFile>;      // by uri — KYC photos + uploaded documents
   lenders: Record<string, Lender>;
   lenderSubs: Record<string, LenderSub>;     // by lenderId
+  wallets: Record<string, WalletAccount>;
   seq: { attestation: number; loan: number; challenge: number };
   audit: RepAudit[];
 }
@@ -42,7 +43,7 @@ function empty(): RepSchema {
   return {
     borrowers: {}, connections: {}, attesters: {}, attestations: {},
     packages: {}, loans: {}, challenges: {}, disclosures: {}, personhoods: {},
-    documents: {}, files: {}, lenders: {}, lenderSubs: {},
+    documents: {}, files: {}, lenders: {}, lenderSubs: {}, wallets: {},
     seq: { attestation: 0, loan: 0, challenge: 0 },
     audit: [],
   };

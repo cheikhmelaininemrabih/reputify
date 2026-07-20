@@ -1,9 +1,13 @@
 // Public DTO shaping for the roadmap system — never leak custodial private keys.
 import { rdb } from "./rep-db";
-import type { Attester, Borrower, Lender } from "./rep-types";
+import type { Attester, Borrower, Lender, WalletAccount } from "./rep-types";
 
 export function publicLender(l: Lender) {
   return { id: l.id, name: l.name, createdAt: l.createdAt };
+}
+
+export function publicWallet(w: WalletAccount) {
+  return { id: w.id, provider: w.provider, phone: w.phone, name: w.name, balance: w.balance, createdAt: w.createdAt, txns: w.txns };
 }
 
 export function publicBorrower(b: Borrower) {

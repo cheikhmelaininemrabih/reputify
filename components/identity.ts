@@ -6,7 +6,7 @@
 // Still one role per tab at a time (you can't be both within the same view).
 // No server round-trip to "sign in" — there's no password, an identity here
 // is just a pointer to an id you already picked from a real list.
-export type Role = "borrower" | "lender" | "attester";
+export type Role = "borrower" | "lender" | "attester" | "wallet";
 export interface Identity { role: Role; id: string; name: string }
 
 const KEY = "rep_identity";

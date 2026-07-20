@@ -28,7 +28,9 @@ async function seedBorrower(name, personhoodId, provider = "OPay", fabricate = f
   const b = (await j("/api/rep/borrowers", { name, phone: `+234${Math.floor(Math.random() * 1e9)}`, personhoodId })).data.borrower;
   await j(`/api/rep/borrowers/${b.id}/kyc`, { idImageBase64: TINY_PNG, selfieImageBase64: TINY_PNG, distance: 0.1 });
   const conn = (await j(`/api/rep/borrowers/${b.id}/connections`, { provider })).data.connection;
-  await j(`/api/rep/borrowers/${b.id}/connections`, { decide: conn.id, approve: true });
+  // Approving is a separate app now — only a wallet can authorize a connection.
+  const wallet = (await j("/api/rep/wallets", { provider, phone: `+234${Math.floor(Math.random() * 1e9)}`, name: `${name} ${provider} wallet` })).data.wallet;
+  await j(`/api/rep/wallets/${wallet.id}/authorize`, { connectionId: conn.id });
   const mint = (await j(`/api/rep/borrowers/${b.id}/mint`, { months: 6, fabricate })).data;
   return { borrower: b, seqs: mint.seqs };
 }

@@ -33,7 +33,6 @@ export default function BorrowerApp() {
   const [rep, setRep] = useState<any>(null);
   const [requests, setRequests] = useState<any[]>([]);
   const [form, setForm] = useState({ name: "", phone: "", personhoodId: "" });
-  const [pendingConn, setPendingConn] = useState<any>(null);
   const [docForm, setDocForm] = useState({ kind: "ownership", label: "" });
   const [docFile, setDocFile] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,14 +107,9 @@ export default function BorrowerApp() {
   async function requestConnect(provider: string) {
     setBusy(true); setErr("");
     try {
-      const r = await api(`/api/rep/borrowers/${identity!.id}/connections`, { provider });
-      setPendingConn({ id: r.connection.id, provider: r.connection.provider, scope: r.connection.scope });
+      await api(`/api/rep/borrowers/${identity!.id}/connections`, { provider });
+      await loadAll(identity!.id);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
-  }
-  async function decideConn(approve: boolean) {
-    if (!pendingConn) return;
-    await run(() => api(`/api/rep/borrowers/${identity!.id}/connections`, { decide: pendingConn.id, approve }));
-    setPendingConn(null);
   }
   function onDocFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -199,7 +193,7 @@ export default function BorrowerApp() {
 
               {tab === "providers" && (
                 <section className="card pad">
-                  <p style={{ marginTop: 0, color: "var(--muted)" }}>Connect the mobile-money apps you use. Each connection needs your explicit approval, just like the real app's consent screen — and you can revoke any time.</p>
+                  <p style={{ marginTop: 0, color: "var(--muted)" }}>Connect the mobile-money apps you use. Authorizing happens inside that app's own wallet — not here — the same way you'd approve a third-party app from inside your real bank. You can revoke any time.</p>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
                     {PROVIDERS.map((p) => {
                       const approved = connections.find((c) => c.provider === p && c.status === "approved" && !c.revoked);
@@ -207,11 +201,25 @@ export default function BorrowerApp() {
                       return (
                         <button key={p} className={approved ? "btn ghost" : "btn teal"} disabled={busy || !!approved || !!pending}
                           onClick={() => requestConnect(p)}>
-                          {approved ? `${p} · connected` : pending ? `${p} · awaiting your approval` : `Connect ${p}`}
+                          {approved ? `${p} · connected` : pending ? `${p} · awaiting authorization` : `Connect ${p}`}
                         </button>
                       );
                     })}
                   </div>
+                  {connections.filter((c) => c.status === "pending").map((c) => (
+                    <div key={c.id} style={{ ...row, flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+                      <span>{c.provider} · waiting on authorization from your wallet</span>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <a className="btn teal" href={`/wallet?authorize=${c.id}`} target="_blank" rel="noreferrer">
+                          Open my {c.provider} wallet to authorize ↗
+                        </a>
+                        <button className="btn ghost" disabled={busy}
+                          onClick={() => run(() => api(`/api/rep/borrowers/${identity!.id}/connections`, { decide: c.id, approve: false }))}>
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                   {connections.filter((c) => c.status === "approved" && !c.revoked).map((c) => (
                     <div key={c.id} style={row}>
                       <span>{c.provider}</span>
@@ -283,23 +291,6 @@ export default function BorrowerApp() {
 
       {err && <p style={{ color: "var(--bad)", marginTop: 14 }}>{err}</p>}
       </div>
-
-      {pendingConn && (
-        <div style={overlay}>
-          <div className="card pad" style={{ maxWidth: 380, width: "90%" }}>
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 4px", fontWeight: 600, letterSpacing: ".02em" }}>{pendingConn.provider} · requesting access</p>
-            <h3 style={{ margin: "0 0 12px" }}>Allow Reputify to connect to your {pendingConn.provider} account?</h3>
-            <p style={{ fontSize: 14, color: "var(--ink-2)", marginBottom: 10 }}>This app is requesting:</p>
-            <ul style={{ margin: "0 0 18px", paddingLeft: 20, fontSize: 14, color: "var(--ink-2)" }}>
-              {pendingConn.scope.map((s: string) => <li key={s}>{s === "cashflow.read" ? "Read your cash-flow history" : s === "standing" ? "Maintain standing (revocable) access" : s}</li>)}
-            </ul>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn gold" style={{ flex: 1 }} disabled={busy} onClick={() => decideConn(true)}>Allow</button>
-              <button className="btn ghost" style={{ flex: 1 }} disabled={busy} onClick={() => decideConn(false)}>Deny</button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -319,4 +310,3 @@ const tabs: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 16, f
 const tabOn: React.CSSProperties = { background: "var(--ink)", color: "var(--bg)", fontSize: 13.5, padding: "9px 14px" };
 const tabOff: React.CSSProperties = { background: "var(--surface)", color: "var(--ink-2)", border: "1px solid var(--line-2)", fontSize: 13.5, padding: "9px 14px" };
 const row: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderTop: "1px solid var(--line)" };
-const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 };

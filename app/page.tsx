@@ -8,6 +8,7 @@ export default function Hub() {
           <Link href="/" className="brand"><span className="dot">R</span><span>Reputify<small>on Hedera</small></span></Link>
           <nav className="navlinks">
             <Link href="/borrower">Borrower app</Link>
+            <Link href="/wallet">Wallet</Link>
             <Link href="/lender">Lender dashboard</Link>
             <Link href="/attester">Attester ops</Link>
             <Link href="/rep" style={{ color: "var(--muted)" }}>Live status</Link>
@@ -35,8 +36,12 @@ export default function Hub() {
       <section className="wrap" style={{ marginTop: 22 }}>
         <div className="systems">
           <SysCard href="/borrower" ic="🙋" title="Borrower app" tag="Reputify" c="#b07d1e">
-            Connect a mobile-money provider, see your standing in plain language, and approve or deny
+            Request a provider connection, see your standing in plain language, and approve or deny
             lenders who ask for a closer look. The chain is invisible from here.
+          </SysCard>
+          <SysCard href="/wallet" ic="📱" title="Mobile-money wallet" tag="OPay · Moniepoint · PalmPay" c="#12a150">
+            A genuinely separate app. Real balance, a ledger you enter by hand, and the only place a
+            connection request actually gets authorized — never from inside the borrower app.
           </SysCard>
           <SysCard href="/lender" ic="🏦" title="Lender dashboard" tag="LenderHub" c="#2f5fd0">
             Search a borrower, see the free summary, request granular access, and verify what comes back
@@ -60,7 +65,7 @@ export default function Hub() {
           </p>
         </div>
         <div className="steps">
-          <Step n="01">Borrower connects a provider — a mock PSP stands in for OPay/Moniepoint/PalmPay OAuth.</Step>
+          <Step n="01">Borrower requests a provider connection; authorizing it happens inside that separate wallet app — real balance, a ledger entered by hand.</Step>
           <Step n="02" chain>A bonded attester signs a cash-flow attestation and posts its hash to HCS.</Step>
           <Step n="03">The lender's default view is a plain-language summary — months of history, providers, repayment record. No raw numbers.</Step>
           <Step n="04">Lender requests granular access. Nothing moves until the borrower taps Allow.</Step>

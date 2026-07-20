@@ -3,6 +3,7 @@
 // granular package, hash it, encrypt-to-borrower, deposit the ciphertext blob,
 // and anchor the hash as an HCS attestation. Never fetched at loan time.
 import { fetchSummary, recentPeriods } from "./mock-psp";
+import { packageFromWallet } from "./wallets";
 import { encryptToBorrower } from "./pkg-crypto";
 import { submitAttestation } from "./attestation";
 import { rdb, rsave } from "./rep-db";
@@ -24,8 +25,17 @@ export async function mintOne(
   const borrower = rdb.borrowers[connection.borrowerId];
   if (!borrower) throw new Error("unknown borrower");
 
-  // 1. Pull the (mock) PSP summary and build the package.
-  const pkg = fetchSummary(borrower.id, connection.provider, period, { fabricate });
+  // 1. Build the package. If a real wallet authorized this connection and
+  //    has entered transactions for this period, use those real numbers —
+  //    that's the whole point of a wallet owner adding their own data.
+  //    Otherwise fall back to the synthetic PSP summary (demo convenience;
+  //    also what `fabricate` needs, since a real wallet's numbers are never
+  //    fabricated by definition).
+  const wallet = connection.walletId ? rdb.wallets[connection.walletId] : undefined;
+  const hasRealData = wallet && wallet.txns.some((t) => t.at.slice(0, 7) === period);
+  const pkg = hasRealData && wallet
+    ? packageFromWallet(borrower.id, connection.provider, period, wallet)
+    : fetchSummary(borrower.id, connection.provider, period, { fabricate });
 
   // 2. Encrypt-to-borrower and deposit the ciphertext blob in the off-chain store.
   const uri = `blob://${borrower.id}/${connection.provider}/${period}`;

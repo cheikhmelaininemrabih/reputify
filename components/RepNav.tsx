@@ -6,6 +6,7 @@ import { getIdentity, clearIdentity, type Identity } from "./identity";
 
 const LINKS = [
   { href: "/borrower", label: "Borrower app" },
+  { href: "/wallet", label: "Wallet" },
   { href: "/lender", label: "Lender dashboard" },
   { href: "/attester", label: "Attester ops" },
   { href: "/rep", label: "Live status" },
