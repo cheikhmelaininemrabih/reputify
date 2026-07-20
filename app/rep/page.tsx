@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/components/api";
+import { RepNav } from "@/components/RepNav";
 
 export default function RepHub() {
   const [mode, setMode] = useState<string>("…");
@@ -26,7 +27,9 @@ export default function RepHub() {
   ];
 
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "48px 22px" }}>
+    <main>
+      <RepNav />
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "48px 22px" }}>
       <p style={{ color: "var(--muted)", fontWeight: 600, letterSpacing: ".02em" }}>Reputify · attestation network</p>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 34, margin: "6px 0 10px" }}>
         Portable reputation, on-chain facts, off-chain money
@@ -61,6 +64,7 @@ export default function RepHub() {
       >
         Reset demo data
       </button>
+      </div>
     </main>
   );
 }

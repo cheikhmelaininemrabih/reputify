@@ -29,12 +29,23 @@ async function ensureTopic(): Promise<TopicId> {
   return receipt.topicId!;
 }
 
-export async function submitToTopic(message: string): Promise<{ sequenceNumber: number; consensusTimestamp: string }> {
+export async function submitToTopic(message: string): Promise<{ sequenceNumber: number; consensusTimestamp: string; topicId: string }> {
   const topic = await ensureTopic();
   const submit = await new TopicMessageSubmitTransaction().setTopicId(topic).setMessage(message).execute(getClient());
   const receipt = await submit.getReceipt(getClient());
   return {
     sequenceNumber: receipt.topicSequenceNumber!.toNumber(),
     consensusTimestamp: new Date().toISOString(),
+    topicId: topic.toString(),
   };
+}
+
+/** The pinned/cached attestation topic, if known — for building explorer links.
+ *  Only meaningful once at least one live submit has happened this process. */
+export function currentTopicId(): string | null {
+  return CONFIGURED_TOPIC ?? null;
+}
+
+export function currentNetwork(): "testnet" | "mainnet" {
+  return NETWORK;
 }

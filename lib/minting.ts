@@ -53,7 +53,7 @@ export async function mintOne(
 export async function mintForBorrower(
   attester: Attester, borrowerId: string, months = 6, endPeriod = defaultPeriod(), fabricate = false,
 ): Promise<MintResult[]> {
-  const conns = Object.values(rdb.connections).filter((c) => c.borrowerId === borrowerId && !c.revoked);
+  const conns = Object.values(rdb.connections).filter((c) => c.borrowerId === borrowerId && c.status === "approved" && !c.revoked);
   const out: MintResult[] = [];
   for (const conn of conns) {
     for (const period of recentPeriods(endPeriod, months)) {

@@ -26,15 +26,16 @@ interface SubmitInput {
   attester: Attester;
   attesterSignPrivKey: string; // custodial signing key
   subject: string;             // borrowerId
+  type?: AttestationMsg["type"]; // default "throughput"
   period: string;
-  hash: string;                // SHA-256 of the granular package
+  hash: string;                // SHA-256 of the granular package (or document)
   packageUri: string;
 }
 
 /** Submit an attestation to HCS. Real when credentials are set, simulated otherwise. */
 export async function submitAttestation(input: SubmitInput): Promise<AttestationMsg> {
   const base = { v: 1 as const, subject: input.subject, attester: input.attester.address,
-                 type: "throughput" as const, period: input.period, hash: input.hash };
+                 type: input.type ?? "throughput", period: input.period, hash: input.hash };
   const sig = signMsg(input.attesterSignPrivKey, signable(base));
 
   let seq: number;
@@ -44,7 +45,7 @@ export async function submitAttestation(input: SubmitInput): Promise<Attestation
   if (LIVE) {
     try {
       const { submitToTopic } = await import("./hcs-live");
-      const r = await submitToTopic(`RPTFY-ATT|${base.period}|${input.hash}`);
+      const r = await submitToTopic(`RPTFY-ATT|${base.type}|${base.period}|${input.hash}`);
       seq = r.sequenceNumber;
       consensusTimestamp = r.consensusTimestamp;
       broadcast = true;
@@ -61,11 +62,9 @@ export async function submitAttestation(input: SubmitInput): Promise<Attestation
   const msg: AttestationMsg = { seq, ...base, sig, packageUri: input.packageUri, consensusTimestamp, broadcast };
   rdb.attestations[seq] = msg;
   rsave();
-  raudit({ actor: input.attester.name, action: `attested ${base.type} ${period(base.period)}`, subject: input.subject, ref: `seq:${seq}` });
+  raudit({ actor: input.attester.name, action: `attested ${base.type} ${base.period}`, subject: input.subject, ref: `seq:${seq}` });
   return msg;
 }
-
-const period = (p: string) => p;
 
 /** Read a borrower's attestations. Mirror node in live mode; store in sim mode. */
 export function attestationsForSubject(subject: string): AttestationMsg[] {
@@ -88,4 +87,20 @@ export function verifyAttestation(msg: AttestationMsg): boolean {
 
 export function attestationMode(): "live" | "simulated" {
   return LIVE ? "live" : "simulated";
+}
+
+/** Where to actually go look at the proof for one attestation, if it was really
+ *  broadcast. `mirror` is the exact message record (verified against a live
+ *  topic — this is the ground truth); `hashscan` is the human-readable topic
+ *  page on the public explorer. null fields in simulated mode — there's
+ *  nothing on-chain to link to. */
+export function attestationExplorerUrls(msg: AttestationMsg): { mirror: string; hashscan: string } | null {
+  if (!LIVE || !msg.broadcast) return null;
+  const network = process.env.HEDERA_NETWORK === "mainnet" ? "mainnet" : "testnet";
+  const topic = process.env.HEDERA_ATTEST_TOPIC_ID?.trim();
+  if (!topic) return null;
+  return {
+    mirror: `https://${network}.mirrornode.hedera.com/api/v1/topics/${topic}/messages/${msg.seq}`,
+    hashscan: `https://hashscan.io/${network}/topic/${topic}`,
+  };
 }

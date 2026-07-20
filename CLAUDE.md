@@ -55,16 +55,51 @@ Two decoupled on-chain "worlds" joined by the backend, plus off-chain encrypted 
 
 ## Routes
 
+All four app pages share `components/RepNav.tsx` (topbar linking `/borrower /lender /attester
+/rep`, current page bolded) so none of them are navigational dead ends.
+
 | Route | Who | Notes |
 |---|---|---|
 | `/` | marketing/investor landing | links to the three surfaces below |
-| `/borrower` | borrower app | onboard (name/phone/`personhoodId` — one identity per person, anti-Sybil), connect a provider (mock PSP stands in for OPay/Moniepoint/PalmPay), see plain-language standing, approve/deny lender disclosure requests. Chain is invisible here. |
-| `/lender` | lender dashboard | search a borrower, see the free summary, request granular access, verify, issue loans, raise fraud challenges |
-| `/attester` | attester ops | bond status + attestations the minting job has posted |
+| `/borrower` | borrower app | onboard (name/phone/`personhoodId` — one identity per person, anti-Sybil) → **KYC gate** (real webcam ID photo + live selfie, compared client-side with face-api.js — see below) → connect a provider (mock PSP stands in for OPay/Moniepoint/PalmPay; each connection is a **pending request the borrower explicitly approves**, via a modal mirroring the provider's own OAuth consent screen, not an instant one-click connect) → **Documents tab** (upload ownership/utility-bill files, anchored the same way as cash-flow data) → see plain-language standing → approve/deny lender disclosure requests. Chain is invisible here. |
+| `/lender` | lender dashboard | search a borrower, see the free summary, request granular access, **subscribe** (static/mock — no real billing, just flips a flag; gates the granular view even after the borrower has allowed disclosure), verify (with a "View on Hedera" link per package/document, straight to the real mirror-node record), issue loans, **raise a fraud dispute** on a defaulted loan (evidence note + submit, inline with the loan row) |
+| `/attester` | attester ops + **marketplace** | bond, accreditation, and real track record per attester (attestations posted, disputes raised/upheld against them — bond size alone isn't the trust signal, an upheld dispute is) + the arbiter's dispute queue |
 | `/rep` | live status hub | mode (live/simulated) + counts, "Reset demo data" button |
 
 APIs: `app/api/rep/*` (all of the above), plus `app/api/chat` (OpenAI help chatbot, no account
 data access — `lib/openai.ts`).
+
+### KYC (`lib/kyc.ts`, `components/KycCapture.tsx`)
+
+Real webcam capture (`getUserMedia`) of an ID document photo (or file upload, since not everyone
+has one handy) and a **live** selfie (camera only — no upload fallback, that's the liveness
+signal), compared in the browser with **face-api.js** — genuine face detection, 68-point landmarks,
+and a 128-d descriptor + Euclidean distance, not a mocked score. Model weights live in
+`public/models/` (fetched from the face-api.js-models repo; `tiny_face_detector` +
+`face_landmark_68` + `face_recognition`, ~6.8MB total). Threshold is 0.6 (face-api.js's own
+documented cutoff); match/no-match is re-derived server-side from the submitted distance
+(`lib/kyc.ts` `MATCH_THRESHOLD`) rather than trusting a client-sent boolean — though the
+detection/scoring itself necessarily ran client-side (no camera server-side). Both photos are
+encrypted-at-rest the same way a cash-flow package is (`pkg-crypto.ts` `encryptFileToBorrower`).
+Connecting a provider and uploading documents are both gated on `kyc.status === "verified"`.
+Headless testing (`scripts/scenarios.mjs`) submits a synthetic low distance with a trivial 1x1 PNG
+— it can't run a browser face model, and the route doesn't require it to.
+
+### Documents (`lib/documents.ts`)
+
+Same off-chain pattern as a cash-flow package, generalized: encrypt the file to the borrower's own
+key (`pkg-crypto.ts` `encryptFileToBorrower`/`fileHash` — byte-accurate hashing, not the JSON
+`canonical()` used for packages), store the ciphertext in `rdb.files`, anchor only the hash as an
+attestation (`type: "document"`, extending `AttestationMsg.type` alongside `"throughput"`). Signed
+by the **borrower's own** identity key, not a bonded attester's — there's no third party to slash
+for a document you upload yourself; this proves tamper-evidence, not third-party-verified accuracy.
+
+### Lender subscription (`lib/billing.ts`)
+
+Static/mock by explicit request — no payment processor. `subscribe()`/`isSubscribed()` just flip a
+flag in `rdb.lenderSubs`. The free tier is always the plain-language summary; a subscription is
+what unlocks verified, granular, on-chain-checked detail once a borrower has *also* separately
+allowed disclosure — two independent gates (`lib/disclosure.ts` `lenderGranularView` checks both).
 
 ## Architecture (`lib/`)
 
@@ -93,7 +128,10 @@ data access — `lib/openai.ts`).
 - `reputation.ts` — the plain-language summary assembly. **Never** returns a hash, timestamp, or
   raw cash-flow figure — those require going through `disclosure.ts`.
 - `rep-present.ts` — public DTO shaping (no private keys, no raw figures) for the `/rep` state
-  endpoint.
+  endpoint; `publicAttester` also computes real track-record stats (attestations, disputes
+  raised/upheld) for the attester marketplace.
+- `kyc.ts` — see KYC section below. `documents.ts` — see Documents section below. `billing.ts` —
+  see Lender subscription section below.
 
 ## Conventions
 

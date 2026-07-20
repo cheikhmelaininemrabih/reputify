@@ -24,7 +24,7 @@ export function assembleReputation(borrowerId: string): Reputation | null {
   if (!b) return null;
   const atts = attestationsForSubject(borrowerId);
   const periods = new Set(atts.map((a) => a.period));
-  const providers = Object.values(rdb.connections).filter((c) => c.borrowerId === borrowerId && !c.revoked);
+  const providers = Object.values(rdb.connections).filter((c) => c.borrowerId === borrowerId && c.status === "approved" && !c.revoked);
   const loans = LoanRegistry.forBorrower(borrowerId);
   const repaid = loans.filter((l) => l.state === "Repaid").length;
   const defaulted = loans.filter((l) => l.state === "Defaulted").length;

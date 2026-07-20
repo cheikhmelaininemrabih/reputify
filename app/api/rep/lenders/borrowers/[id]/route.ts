@@ -10,11 +10,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const reputation = assembleReputation(params.id);
   if (!reputation) return NextResponse.json({ error: "unknown borrower" }, { status: 404 });
   const view = lenderGranularView(params.id, lenderId);
-  const verified = view.allowed && view.packages.length > 0 && view.packages.every((p) => p.verified);
+  const items = [...view.packages, ...view.documents];
+  const verified = view.allowed && view.subscribed && items.length > 0 && items.every((p) => p.verified);
   return NextResponse.json({
     reputation,
     granularAllowed: view.allowed,
+    subscribed: view.subscribed,
     verified,
     packages: view.packages,
+    documents: view.documents,
   });
 }

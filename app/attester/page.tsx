@@ -1,18 +1,25 @@
 "use client";
 // Attester + governance ops (roadmap §9 "attester job — headless, optional ops
-// dashboard"). Shows bond status, the attestations posted, and the arbiter's
-// dispute queue (uphold ⇒ slash).
+// dashboard"). Shows the attester marketplace (bond + real track record — an
+// upheld dispute is a much stronger signal than bond size alone), the
+// attestations posted, and the arbiter's dispute queue (uphold ⇒ slash).
 import { useEffect, useState } from "react";
 import { api } from "@/components/api";
+import { RepNav } from "@/components/RepNav";
 
 export default function AttesterOps() {
   const [state, setState] = useState<any>(null);
+  const [attesters, setAttesters] = useState<any[]>([]);
   const [name, setName] = useState("");
   const [stake, setStake] = useState(5000);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  async function refresh() { setState(await api("/api/rep/state")); }
+  async function refresh() {
+    const [s, a] = await Promise.all([api("/api/rep/state"), api("/api/rep/attesters")]);
+    setState(s);
+    setAttesters(a.attesters);
+  }
   useEffect(() => { refresh().catch((e) => setErr(e.message)); }, []);
 
   async function run(fn: () => Promise<any>) {
@@ -24,17 +31,38 @@ export default function AttesterOps() {
   const ruled = (state?.challenges ?? []).filter((c: any) => c.ruled);
 
   return (
-    <main style={{ maxWidth: 820, margin: "0 auto", padding: "36px 20px" }}>
+    <main>
+      <RepNav />
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "36px 20px" }}>
       <h1 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "var(--font-display)" }}>Attester &amp; governance ops</h1>
       <p style={{ color: "var(--muted)", marginTop: 0 }}>{state?.attestations ?? 0} attestations posted · mode {state?.mode}</p>
 
       <section className="card pad" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Attesters</h3>
-        {(state?.attesters ?? []).map((a: any) => (
-          <div key={a.address} style={row}>
-            <span>{a.name} · bond <b>{a.bond}</b> {a.accredited ? "· accredited" : ""}</span>
-          </div>
-        ))}
+        <h3 style={{ marginTop: 0 }}>Attester marketplace</h3>
+        <p style={{ marginTop: 0, color: "var(--muted)", fontSize: 13.5 }}>Bond size alone doesn't tell a lender much — an upheld dispute against an attester does.</p>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+              <th style={ath}>Attester</th><th style={ath}>Bond</th><th style={ath}>Attestations</th><th style={ath}>Disputes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attesters.map((a) => (
+              <tr key={a.address} style={{ borderTop: "1px solid var(--line)" }}>
+                <td style={atd}>{a.name} {a.accredited && <span style={{ color: "var(--teal)", fontSize: 12 }}>· accredited</span>}</td>
+                <td style={atd}><b>{a.bond}</b></td>
+                <td style={atd}>{a.stats.attestations}</td>
+                <td style={atd}>
+                  {a.stats.disputesUpheld > 0
+                    ? <span style={{ color: "var(--bad)" }}>{a.stats.disputesUpheld} upheld / {a.stats.disputesRaised}</span>
+                    : a.stats.disputesRaised > 0
+                      ? <span style={{ color: "var(--good)" }}>0 upheld / {a.stats.disputesRaised}</span>
+                      : <span style={{ color: "var(--muted)" }}>none</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <input className="inp" style={{ width: 200 }} placeholder="Attester name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="inp" style={{ width: 120 }} type="number" value={stake} onChange={(e) => setStake(Number(e.target.value))} />
@@ -73,8 +101,11 @@ export default function AttesterOps() {
       </section>
 
       {err && <p style={{ color: "var(--bad)", marginTop: 14 }}>{err}</p>}
+      </div>
     </main>
   );
 }
 
 const row: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid var(--line)" };
+const ath: React.CSSProperties = { padding: "6px 8px", fontWeight: 600 };
+const atd: React.CSSProperties = { padding: "8px 8px" };

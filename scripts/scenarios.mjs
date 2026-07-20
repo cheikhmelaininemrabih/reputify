@@ -19,13 +19,21 @@ async function j(path, body) {
 const bondOf = async (address) =>
   (await j("/api/rep/state")).data.attesters.find((a) => a.address === address)?.bond ?? 0;
 
+// A trivial 1x1 PNG — the KYC route trusts the client-computed face-descriptor
+// distance (it can't re-run a browser face model server-side), so headless
+// scenarios don't need a real camera/photo, just a distance under the threshold.
+const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
 async function seedBorrower(name, personhoodId, provider = "OPay", fabricate = false) {
   const b = (await j("/api/rep/borrowers", { name, phone: `+234${Math.floor(Math.random() * 1e9)}`, personhoodId })).data.borrower;
-  await j(`/api/rep/borrowers/${b.id}/connections`, { provider });
+  await j(`/api/rep/borrowers/${b.id}/kyc`, { idImageBase64: TINY_PNG, selfieImageBase64: TINY_PNG, distance: 0.1 });
+  const conn = (await j(`/api/rep/borrowers/${b.id}/connections`, { provider })).data.connection;
+  await j(`/api/rep/borrowers/${b.id}/connections`, { decide: conn.id, approve: true });
   const mint = (await j(`/api/rep/borrowers/${b.id}/mint`, { months: 6, fabricate })).data;
   return { borrower: b, seqs: mint.seqs };
 }
 async function disclose(borrowerId, lenderId) {
+  await j("/api/rep/lenders/subscribe", { lenderId });
   const req = (await j("/api/rep/disclosures", { borrowerId, lenderId })).data.disclosure;
   await j(`/api/rep/disclosures/${req.id}`, { allow: true });
 }

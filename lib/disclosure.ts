@@ -4,10 +4,11 @@
 // The lender then re-hashes each received package and checks it against the hash
 // anchored on-chain ("verify-on-receipt") before trusting it → the Verified ✓.
 import crypto from "node:crypto";
-import { decryptPackage, verifyOnReceipt } from "./pkg-crypto";
-import { attestationsForSubject } from "./attestation";
+import { decryptFile, decryptPackage, fileHash, verifyOnReceipt } from "./pkg-crypto";
+import { attestationsForSubject, attestationExplorerUrls } from "./attestation";
+import { isSubscribed } from "./billing";
 import { rdb, rsave, raudit } from "./rep-db";
-import type { Disclosure, GranularPackage } from "./rep-types";
+import type { AssetDocument, Disclosure, GranularPackage } from "./rep-types";
 
 export function requestDisclosure(borrowerId: string, lenderId: string): Disclosure {
   const id = crypto.randomUUID();
@@ -37,31 +38,67 @@ export function decideDisclosure(id: string, allow: boolean): Disclosure {
 export interface VerifiedPackage extends GranularPackage {
   verified: boolean; // re-hash matched the on-chain attestation hash
   attestationSeq: number;
+  attesterName: string; // who vouched for this data
+  proof: { mirror: string; hashscan: string } | null; // click through to the real Hedera record
 }
 
-/** The lender's granular view — only if the borrower has allowed it. Each package
- *  is decrypted (custodial), then independently re-hashed and matched against the
- *  attestation on HCS. */
+export interface VerifiedDocument extends Pick<AssetDocument, "id" | "kind" | "label" | "mime" | "uploadedAt"> {
+  verified: boolean;
+  attestationSeq?: number;
+  proof: { mirror: string; hashscan: string } | null;
+}
+
+/** The lender's granular view. Two gates, in order: (1) the borrower must have
+ *  allowed disclosure, (2) the lender must have an active subscription — without
+ *  one they still know disclosure was granted, just not the contents (roadmap
+ *  monetization: the summary is always free, verified detail is the product). */
 export function lenderGranularView(borrowerId: string, lenderId: string): {
-  allowed: boolean; packages: VerifiedPackage[];
+  allowed: boolean; subscribed: boolean; packages: VerifiedPackage[]; documents: VerifiedDocument[];
 } {
   const allowed = Object.values(rdb.disclosures).some(
     (d) => d.borrowerId === borrowerId && d.lenderId === lenderId && d.state === "allowed" && d.released,
   );
-  if (!allowed) return { allowed: false, packages: [] };
+  const subscribed = isSubscribed(lenderId);
+  if (!allowed || !subscribed) return { allowed, subscribed, packages: [], documents: [] };
 
   const borrower = rdb.borrowers[borrowerId];
   const atts = attestationsForSubject(borrowerId);
+
   const packages: VerifiedPackage[] = [];
-  for (const att of atts) {
+  for (const att of atts.filter((a) => a.type === "throughput")) {
     const blob = rdb.packages[att.packageUri];
     if (!blob) continue;
     try {
       const pkg = decryptPackage(blob, borrower.wallet.encPrivateKey);
-      packages.push({ ...pkg, verified: verifyOnReceipt(pkg, att.hash), attestationSeq: att.seq });
+      packages.push({
+        ...pkg, verified: verifyOnReceipt(pkg, att.hash), attestationSeq: att.seq,
+        attesterName: rdb.attesters[att.attester]?.name ?? att.attester,
+        proof: attestationExplorerUrls(att),
+      });
     } catch {
       /* undecryptable blob — skip */
     }
   }
-  return { allowed: true, packages };
+
+  const documents: VerifiedDocument[] = [];
+  for (const doc of Object.values(rdb.documents).filter((d) => d.borrowerId === borrowerId)) {
+    const att = doc.attestationSeq != null ? rdb.attestations[doc.attestationSeq] : undefined;
+    const blob = rdb.files[doc.fileUri];
+    let verified = false;
+    if (att && blob) {
+      try {
+        const base64 = decryptFile(blob, borrower.wallet.encPrivateKey);
+        verified = fileHash(base64) === att.hash;
+      } catch {
+        /* undecryptable blob — leave unverified */
+      }
+    }
+    documents.push({
+      id: doc.id, kind: doc.kind, label: doc.label, mime: doc.mime, uploadedAt: doc.uploadedAt,
+      verified, attestationSeq: doc.attestationSeq,
+      proof: att ? attestationExplorerUrls(att) : null,
+    });
+  }
+
+  return { allowed: true, subscribed: true, packages, documents };
 }

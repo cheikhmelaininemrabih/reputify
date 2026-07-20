@@ -32,6 +32,7 @@ export function onboardBorrower(input: { name: string; phone: string; personhood
     id: `bwr_${crypto.randomBytes(6).toString("hex")}`,
     name: input.name, phone: input.phone, wallet,
     personhoodId: input.personhoodId, createdAt: new Date().toISOString(),
+    kyc: { status: "unverified" },
   };
   rdb.borrowers[b.id] = b;
   rdb.personhoods[input.personhoodId] = b.id;
@@ -40,20 +41,37 @@ export function onboardBorrower(input: { name: string; phone: string; personhood
   return b;
 }
 
-/** Connect a mobile-money provider = standing consent (revocable OAuth token). */
+/** Start connecting a mobile-money provider — mirrors a real PSP OAuth flow:
+ *  this creates a *pending* consent request with the scope the provider is
+ *  asking for. It doesn't count for anything (minting, reputation) until the
+ *  borrower explicitly approves it on the provider's own consent screen. */
 export function connectProvider(borrowerId: string, provider: Connection["provider"]): Connection {
   const b = rdb.borrowers[borrowerId];
   if (!b) throw new Error("unknown borrower");
+  if (b.kyc.status !== "verified") throw new Error("complete KYC before connecting a provider");
   const { token, scope } = mockOAuthConnect(provider);
   const conn: Connection = {
     id: `con_${crypto.randomBytes(6).toString("hex")}`,
-    borrowerId, provider, tokenEnc: sealToken(token), scope,
+    borrowerId, provider, tokenEnc: sealToken(token), scope, status: "pending",
     connectedAt: new Date().toISOString(),
   };
   rdb.connections[conn.id] = conn;
   rsave();
-  raudit({ actor: b.name, action: `connected ${provider}`, subject: borrowerId });
+  raudit({ actor: b.name, action: `requested to connect ${provider}`, subject: borrowerId });
   return conn;
+}
+
+/** The borrower approves/denies the pending provider consent request — the
+ *  in-app equivalent of tapping Allow on the PSP's own authorization screen. */
+export function decideConnection(connectionId: string, approve: boolean): Connection {
+  const c = rdb.connections[connectionId];
+  if (!c) throw new Error("unknown connection");
+  if (c.status !== "pending") throw new Error(`connection is already ${c.status}`);
+  c.status = approve ? "approved" : "denied";
+  c.decidedAt = new Date().toISOString();
+  rsave();
+  raudit({ actor: c.borrowerId, action: `${approve ? "approved" : "denied"} ${c.provider} connection`, subject: c.borrowerId });
+  return c;
 }
 
 export function revokeConnection(connectionId: string): Connection {

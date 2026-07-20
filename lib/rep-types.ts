@@ -20,6 +20,18 @@ export interface RepWallet {
   did: string;     // did:hedera:<network>:<signPublicKey>
 }
 
+/** Real webcam-captured ID photo + selfie, compared client-side with a genuine
+ *  face-detection/recognition model (face-api.js) — not a mocked score. */
+export interface KycRecord {
+  status: "unverified" | "pending" | "verified" | "failed";
+  idImageUri?: string;     // encrypted-at-rest blob uri (see EncryptedFile)
+  selfieImageUri?: string;
+  distance?: number;       // face-descriptor Euclidean distance (lower = closer match)
+  matched?: boolean;       // distance below the match threshold
+  note?: string;
+  verifiedAt?: string;
+}
+
 export interface Borrower {
   id: string;
   name: string;
@@ -28,17 +40,65 @@ export interface Borrower {
   personhoodId: string; // BVN/NIN stub — one real person, anti-Sybil
   createdAt: string;
   defaulted?: boolean;  // set when a loan of theirs defaults (for the demo)
+  kyc: KycRecord;
 }
 
-/** A connected mobile-money provider = standing consent (revocable OAuth token). */
+/** A connected mobile-money provider = standing consent (revocable OAuth token).
+ *  Modelled like a real PSP OAuth flow: connecting creates a "pending" request
+ *  with the requested scope; the borrower has to explicitly approve it (mirrors
+ *  the provider's own consent screen) before it counts for anything. */
 export interface Connection {
   id: string;
   borrowerId: string;
   provider: "OPay" | "Moniepoint" | "PalmPay";
   tokenEnc: string;    // PSP OAuth token, encrypted at rest
   scope: string[];
+  status: "pending" | "approved" | "denied";
   connectedAt: string;
+  decidedAt?: string;
   revoked?: boolean;
+}
+
+export type AssetKind = "ownership" | "utility_water" | "utility_electricity" | "utility_gas" | "other";
+
+/** A borrower-uploaded document (proof of asset ownership, utility bill, etc).
+ *  Same off-chain pattern as a cash-flow package: the file itself is encrypted
+ *  and stored off-chain; only its hash is ever anchored (as a "document"
+ *  attestation), so it's independently verifiable without being public. */
+export interface AssetDocument {
+  id: string;
+  borrowerId: string;
+  kind: AssetKind;
+  label: string;
+  fileUri: string;      // -> EncryptedFile in rdb.files
+  hash: string;         // sha256 of the raw file bytes
+  mime: string;
+  uploadedAt: string;
+  attestationSeq?: number;
+}
+
+/** Generic encrypted-at-rest blob (KYC photos, uploaded documents) — same X25519
+ *  envelope as EncryptedPackage but over arbitrary bytes, not a JSON package. */
+export interface EncryptedFile {
+  uri: string;
+  ownerBorrowerId: string;
+  hash: string;
+  ephPublicKey: string;
+  iv: string;
+  authTag: string;
+  ciphertext: string;
+  filename: string;
+  mime: string;
+}
+
+/** A lender's subscription to full/verified data. Static/mock — no real billing;
+ *  "Subscribe" just flips this flag. Without it, a lender only ever sees the
+ *  free plain-language summary, even if the borrower already allowed disclosure. */
+export interface LenderSub {
+  lenderId: string;
+  active: boolean;
+  plan: string;
+  since: string;
 }
 
 /** The granular package the lender underwrites on. Never touches the chain;
@@ -75,7 +135,7 @@ export interface AttestationMsg {
   v: 1;
   subject: string;   // borrowerId
   attester: string;  // attester address (shared identity w/ AttesterRegistry)
-  type: "throughput";
+  type: "throughput" | "document";
   period: string;
   hash: string;      // SHA-256 of the granular package
   sig: string;       // attester Ed25519 signature over the canonical fields
