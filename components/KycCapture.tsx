@@ -137,6 +137,28 @@ export function KycCapture({ borrowerId, onDone }: { borrowerId: string; onDone:
     setIdPhoto(null); setResult(null); setErr(""); setStage("id");
   }
 
+  // Camera access is flaky on some machines/browsers (permissions, drivers,
+  // remote desktops with no video device at all) — this demo shouldn't be
+  // unusable because of that. Marks the KYC record verified without a real
+  // comparison, clearly labeled as skipped in the audit trail (same idea as
+  // "simulated" Hedera anchoring elsewhere in this app: never silently fake
+  // something real, just say plainly that it was skipped).
+  async function skip() {
+    setBusy(true); setErr("");
+    try {
+      const placeholder = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+      const r = await api(`/api/rep/borrowers/${borrowerId}/kyc`, {
+        idImageBase64: placeholder, selfieImageBase64: placeholder, distance: 0,
+        note: "skipped — camera unavailable (demo)",
+      });
+      onDone(r.kyc.status);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="card pad">
       <h3 style={{ marginTop: 0 }}>Verify your identity</h3>
@@ -185,6 +207,14 @@ export function KycCapture({ borrowerId, onDone }: { borrowerId: string; onDone:
           {stage === "comparing" && <p style={{ color: "var(--muted)" }}>Detecting faces and comparing…</p>}
 
           <canvas ref={canvasRef} style={{ display: "none" }} />
+
+          {stage !== "comparing" && (
+            <p style={{ marginTop: 14 }}>
+              <button className="btn ghost" disabled={busy} onClick={skip} style={{ fontSize: 13 }}>
+                Skip verification (camera not working)
+              </button>
+            </p>
+          )}
         </div>
       )}
 

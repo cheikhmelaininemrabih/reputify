@@ -144,6 +144,16 @@ export interface AttestationMsg {
   broadcast: boolean; // true = real HCS submit; false = simulated
 }
 
+/** A lender's identity — deliberately minimal (name only), same "PoC
+ *  simplification, no passwords" pattern as Borrower/Attester. Exists so a
+ *  lender can sign in as *one* identity, the same way a borrower does — see
+ *  lib/session.ts. */
+export interface Lender {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface Attester {
   address: string;
   name: string;

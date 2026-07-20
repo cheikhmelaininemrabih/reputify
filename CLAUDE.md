@@ -53,10 +53,26 @@ Two decoupled on-chain "worlds" joined by the backend, plus off-chain encrypted 
    tampering with it (by the backend, a compromised DB, anyone) is detectable without ever
    exposing it publicly.
 
+## Roles are separated (`lib/session.ts`)
+
+A single `rep_session` cookie holds exactly one `{role, id}` at a time — the same browser can't
+act as a borrower and a lender (or attester) simultaneously. Signing in on `/borrower` while
+already signed in as a lender shows a blocking "you're signed in as a lender, sign out to
+continue" card (`components/WrongRole.tsx`) instead of the page. `POST /api/rep/session` validates
+the id actually exists in that role's table before setting the cookie; `DELETE` signs out.
+`components/RepNav.tsx` shows the current identity + a Sign out button on every page. This is a
+**UI-level safeguard, not a hardened authorization layer** — the underlying `/api/rep/*` endpoints
+still trust whatever id is passed to them (same PoC trust boundary as elsewhere: e.g. the disputes
+endpoint doesn't check the caller is really the loan's lender), and `scripts/scenarios.mjs`
+deliberately bypasses the session layer entirely by calling those endpoints directly. No passwords
+— signing in as an existing identity just means picking it from a list, same as borrowers/attesters
+never had passwords either.
+
 ## Routes
 
 All four app pages share `components/RepNav.tsx` (topbar linking `/borrower /lender /attester
-/rep`, current page bolded) so none of them are navigational dead ends.
+/rep`, current page bolded, current signed-in identity + Sign out) so none of them are navigational
+dead ends.
 
 | Route | Who | Notes |
 |---|---|---|
@@ -83,7 +99,11 @@ detection/scoring itself necessarily ran client-side (no camera server-side). Bo
 encrypted-at-rest the same way a cash-flow package is (`pkg-crypto.ts` `encryptFileToBorrower`).
 Connecting a provider and uploading documents are both gated on `kyc.status === "verified"`.
 Headless testing (`scripts/scenarios.mjs`) submits a synthetic low distance with a trivial 1x1 PNG
-— it can't run a browser face model, and the route doesn't require it to.
+— it can't run a browser face model, and the route doesn't require it to. There's also a **"Skip
+verification"** button on the KYC gate itself (camera access is flaky on some machines/browsers —
+permissions, drivers, no video device at all in some environments) — it submits the same
+trivial-PNG-plus-low-distance trick as the headless script, clearly logged as skipped in the audit
+trail rather than silently pretending a real comparison happened.
 
 ### Documents (`lib/documents.ts`)
 

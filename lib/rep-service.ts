@@ -7,7 +7,7 @@ import { mockOAuthConnect } from "./mock-psp";
 import { AttesterRegistry } from "./contracts";
 import { PARAMS } from "./rep-types";
 import { rdb, rsave, raudit } from "./rep-db";
-import type { Attester, Borrower, Connection } from "./rep-types";
+import type { Attester, Borrower, Connection, Lender } from "./rep-types";
 
 // PSP tokens are held server-side "encrypted at rest" (roadmap §6). PoC uses a
 // dev-derived key; production = KMS-managed key.
@@ -99,4 +99,17 @@ export function onboardAttester(input: { name: string; stake: number }): Atteste
 export function ensureDefaultAttester(): Attester {
   const existing = Object.values(rdb.attesters).find((a) => a.accredited);
   return existing ?? onboardAttester({ name: "MarsaAttest", stake: PARAMS.minBond * 5 });
+}
+
+/** Register a lender identity — minimal on purpose (name only), the same "no
+ *  passwords" PoC pattern as borrowers/attesters. Exists so a lender can sign
+ *  in as one identity via lib/session.ts, instead of typing any lender name
+ *  into a free-text box. */
+export function onboardLender(name: string): Lender {
+  if (!name.trim()) throw new Error("name is required");
+  const l: Lender = { id: `len_${crypto.randomBytes(6).toString("hex")}`, name: name.trim(), createdAt: new Date().toISOString() };
+  rdb.lenders[l.id] = l;
+  rsave();
+  raudit({ actor: l.name, action: "registered as lender", subject: l.id });
+  return l;
 }
