@@ -48,7 +48,8 @@ export async function submitAttestation(input: SubmitInput): Promise<Attestation
       seq = r.sequenceNumber;
       consensusTimestamp = r.consensusTimestamp;
       broadcast = true;
-    } catch {
+    } catch (e) {
+      console.error("[hedera] live attestation submit failed, falling back to simulated:", e);
       seq = nextSeq("attestation");
       consensusTimestamp = new Date().toISOString();
     }

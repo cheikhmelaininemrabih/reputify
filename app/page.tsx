@@ -7,38 +7,44 @@ export default function Hub() {
         <div className="wrap row">
           <Link href="/" className="brand"><span className="dot">R</span><span>Reputify<small>on Hedera</small></span></Link>
           <nav className="navlinks">
-            <Link href="/wallet">Wallet</Link>
-            <Link href="/bank">For banks</Link>
-            <Link href="/login" className="btn ghost" style={{ padding: "8px 16px" }}>Sign in</Link>
+            <Link href="/borrower">Borrower app</Link>
+            <Link href="/lender">Lender dashboard</Link>
+            <Link href="/attester">Attester ops</Link>
+            <Link href="/rep" style={{ color: "var(--muted)" }}>Live status</Link>
           </nav>
         </div>
       </header>
 
       <section className="hero">
         <div className="wrap">
-          <span className="badge">◆ Alternative credit infrastructure on Hedera</span>
-          <h1>Credit identity for the <span className="gradient-text">33 million</span> who don&apos;t have one.</h1>
-          <p className="sub">A mobile-money wallet you actually use, a credit layer that scores your real activity, and a bank that trusts the result — connected on-chain, private by default.</p>
+          <span className="badge">◆ Portable reputation infrastructure on Hedera</span>
+          <h1>We don&apos;t score anyone. We give lenders <span className="gradient-text">proof they can trust</span>.</h1>
+          <p className="sub">
+            Bonded attesters post signed cash-flow attestations to a public Hedera log — a hash only, never
+            the data. A lender sees a plain-language summary by default; if they need more, the borrower
+            approves it, and what they receive is independently re-hashed and checked against the on-chain
+            record before it&apos;s trusted. The real numbers stay off-chain and encrypted the whole time.
+          </p>
           <div className="cta">
-            <Link href="/signup" className="btn primary lg">Create your account →</Link>
-            <Link href="/wallet" className="btn ghost lg">Explore the wallet</Link>
+            <Link href="/borrower" className="btn primary lg">Open the borrower app →</Link>
+            <Link href="/lender" className="btn ghost lg">Open the lender dashboard</Link>
           </div>
         </div>
       </section>
 
       <section className="wrap" style={{ marginTop: 22 }}>
         <div className="systems">
-          <SysCard href="/wallet" ic="📱" title="Mobile-money wallet" tag="PayCircle" c="#12a150">
-            Open an account and use it for real — income, airtime, bills, betting, transfers — with live AI fraud detection. This is where your financial story is written.
+          <SysCard href="/borrower" ic="🙋" title="Borrower app" tag="Reputify" c="#b07d1e">
+            Connect a mobile-money provider, see your standing in plain language, and approve or deny
+            lenders who ask for a closer look. The chain is invisible from here.
           </SysCard>
-          <SysCard href="/signup" ic="🪪" title="Credit identity" tag="Reputify" c="#b07d1e">
-            Sign up, get a Hedera wallet and DID, pass KYC once, connect your wallet, and build a Passport that banks can trust.
+          <SysCard href="/lender" ic="🏦" title="Lender dashboard" tag="LenderHub" c="#2f5fd0">
+            Search a borrower, see the free summary, request granular access, and verify what comes back
+            against the hash anchored on Hedera before you decide.
           </SysCard>
-          <SysCard href="/bank" ic="🏦" title="Bank portal" tag="LenderHub" c="#2f5fd0">
-            Lenders review a pool of consented applicants, see the score and risk signals, and decide who to approve — without ever seeing raw data.
-          </SysCard>
-          <SysCard href="/rep" ic="⚖️" title="Attestation & lending" tag="Reputify network" c="#7a3fd0">
-            A second, decoupled on-chain world: bonded attesters post signed throughput attestations to HCS, lenders issue loans against them, and a fraud challenge slashes a lying attester&apos;s stake.
+          <SysCard href="/attester" ic="⚖️" title="Attester ops" tag="Reputify network" c="#7a3fd0">
+            Bonded attesters sign and post throughput attestations. A fraud challenge that's upheld slashes
+            the lying attester's stake — the incentive that keeps attestations honest.
           </SysCard>
         </div>
       </section>
@@ -46,20 +52,24 @@ export default function Hub() {
       <section className="wrap" style={{ marginTop: 64, marginBottom: 20 }}>
         <div style={{ textAlign: "center", maxWidth: "60ch", margin: "0 auto 30px" }}>
           <span className="eyebrow">How it works</span>
-          <h2 style={{ fontSize: 32, margin: "10px 0" }}>Six steps, one chain</h2>
-          <p className="muted">What&apos;s private stays off-chain. Only cryptographic <span className="onchainmark">commitments</span> are anchored on Hedera.</p>
+          <h2 style={{ fontSize: 32, margin: "10px 0" }}>On-chain facts, off-chain money</h2>
+          <p className="muted">
+            What&apos;s private stays private. Only a cryptographic <span className="onchainmark">hash</span> of
+            each attestation is anchored on Hedera — the real cash-flow package is encrypted to the
+            borrower&apos;s key and only ever released with their consent.
+          </p>
         </div>
         <div className="steps">
-          <Step n="01">Use the <b>wallet</b> — income, bills, transfers, betting. AI flags risky patterns live.</Step>
-          <Step n="02" chain>Create a <b>Reputify</b> account — a Hedera wallet + DID, minted and anchored.</Step>
-          <Step n="03" chain>Pass <b>KYC</b> — a Verifiable Credential is issued and anchored.</Step>
-          <Step n="04">Connect the wallet — Reputify scores your real activity: stability, gambling, fraud.</Step>
-          <Step n="05" chain>Anchor the <b>Passport</b> and sign a scoped <b>consent</b> for one bank.</Step>
-          <Step n="06" chain>The <b>bank</b> reviews and decides. It verifies the commitment on-chain.</Step>
+          <Step n="01">Borrower connects a provider — a mock PSP stands in for OPay/Moniepoint/PalmPay OAuth.</Step>
+          <Step n="02" chain>A bonded attester signs a cash-flow attestation and posts its hash to HCS.</Step>
+          <Step n="03">The lender's default view is a plain-language summary — months of history, providers, repayment record. No raw numbers.</Step>
+          <Step n="04">Lender requests granular access. Nothing moves until the borrower taps Allow.</Step>
+          <Step n="05" chain>The released package is re-hashed and checked against the attestation on Hedera — &quot;Verified ✓&quot; only if it matches.</Step>
+          <Step n="06" chain>Loans, repayment, and slashing are recorded against attestation sequence numbers — a lying attester's bond gets slashed if a challenge is upheld.</Step>
         </div>
       </section>
 
-      <footer className="foot"><div className="wrap">Reputify · alternative credit infrastructure on Hedera · investor prototype — synthetic data, no real borrowers</div></footer>
+      <footer className="foot"><div className="wrap">Reputify · portable reputation infrastructure on Hedera · investor prototype — synthetic data, no real borrowers</div></footer>
     </main>
   );
 }

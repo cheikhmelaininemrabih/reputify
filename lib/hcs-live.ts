@@ -25,6 +25,7 @@ async function ensureTopic(): Promise<TopicId> {
   const tx = await new TopicCreateTransaction().setTopicMemo("Reputify attestation log").execute(getClient());
   const receipt = await tx.getReceipt(getClient());
   CONFIGURED_TOPIC = receipt.topicId!.toString();
+  console.log(`[hedera] created attestation topic ${CONFIGURED_TOPIC} — set HEDERA_ATTEST_TOPIC_ID to pin it across restarts`);
   return receipt.topicId!;
 }
 
